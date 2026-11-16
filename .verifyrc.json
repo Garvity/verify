@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "security": {
+    "secrets": true,
+    "sensitiveFiles": true,
+    "dangerousPatterns": true
+  },
+  "quality": {
+    "tests": true,
+    "lint": true,
+    "typecheck": true
+  },
+  "policies": {
+    "protectedFiles": [
+      ".env",
+      ".github/workflows/**",
+      "package.json",
+      "pnpm-lock.yaml"
+    ],
+    "requireApproval": true
+  },
+  "execution": {
+    "timeoutMs": 120000,
+    "commands": [
+      {
+        "id": "test",
+        "executable": "pnpm",
+        "args": ["test"],
+        "required": true
+      },
+      {
+        "id": "lint",
+        "executable": "pnpm",
+        "args": ["lint"],
+        "required": false
+      },
+      {
+        "id": "typecheck",
+        "executable": "pnpm",
+        "args": ["typecheck"],
+        "required": false
+      }
+    ]
+  },
+  "agent": {
+    "maxRetries": 3
+  }
+}
