@@ -44,4 +44,9 @@ describe("CLI command dispatch", () => {
     expect(stdout).toContain("--benchmark <tasks-dir|task.json>");
     expect(stdout).toContain("--models <model-a,model-b");
   });
+
+  it("documents task routing on the agent command", async () => {
+    await expect(runCli(["agent", "--help"])).resolves.toBe(0);
+    expect(stdout).toContain("--task-type <simple|coding|reasoning|security>");
+  });
 });

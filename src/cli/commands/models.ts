@@ -1,4 +1,3 @@
-import { createLlmClient } from "../../ai/gateway/client.js";
 import { loadProjectEnv } from "../../ai/gateway/env.js";
 import { discoverModels } from "../../ai/gateway/models.js";
 import { VerifyError } from "../../core/error.js";
@@ -21,7 +20,7 @@ export async function modelsCommand(args: string[]): Promise<number> {
   }
 
   loadProjectEnv();
-  const models = await discoverModels(createLlmClient());
+  const models = await discoverModels();
   if (format === "json") {
     process.stdout.write(`${JSON.stringify(models, null, 2)}\n`);
   } else if (models.length === 0) {

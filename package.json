@@ -13,7 +13,9 @@
     "mcp": "node dist/mcp/main.js",
     "mcp:dev": "tsx src/mcp/main.ts",
     "test:mcp": "vitest run tests/integration/mcp",
-    "gateway:check": "tsx src/ai/gateway/test.ts"
+    "gateway:check": "tsx src/ai/gateway/test.ts",
+    "http": "node dist/http/main.js",
+    "http:dev": "tsx src/http/main.ts"
   },
   "keywords": [],
   "author": "",

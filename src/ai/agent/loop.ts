@@ -8,6 +8,8 @@ import type {
 import { createLlmClient } from "../gateway/client.js";
 import { extractResponseMetadata, type ResponseMetadata } from "../gateway/metadata.js";
 import { getConfiguredModel } from "../gateway/models.js";
+import { ContextManager } from "../context/context-manager.js";
+import { routeModelForTask, type ModelRoute, type TaskType } from "../gateway/router.js";
 import { addUsage, EMPTY_USAGE, summarizeUsage, type TokenUsageSummary } from "../gateway/usage.js";
 import { createTaskPrompt, AGENT_SYSTEM_PROMPT } from "./prompts.js";
 import { createRetryPolicy } from "./retry-policy.js";
@@ -22,6 +24,11 @@ export interface AgentEvent {
   usage?: TokenUsageSummary;
   tool?: string;
   ok?: boolean;
+  context?: {
+    estimatedTokens: number;
+    estimatedTokensBefore: number;
+    droppedMessages: number;
+  };
 }
 
 export interface AgentRunResult {
@@ -31,6 +38,7 @@ export interface AgentRunResult {
   correctionAttempts: number;
   verificationAttempts: number;
   verification?: VerificationResult;
+  routing?: ModelRoute;
   usage: TokenUsageSummary;
   events: AgentEvent[];
 }
@@ -42,6 +50,8 @@ export interface AgentRunOptions {
   model?: string;
   maxRetries: number;
   protectedPaths?: string[];
+  routing?: ModelRoute;
+  taskType?: TaskType;
   complete?: (request: ChatCompletionCreateParamsNonStreaming) => Promise<ChatCompletion>;
   executeTool?: AgentToolExecutor;
 }
@@ -84,7 +94,8 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
   if (!task) throw new Error("Agent task must not be empty.");
 
   const policy = createRetryPolicy(options.maxRetries);
-  const model = options.model?.trim() || getConfiguredModel();
+  const routing = options.routing ?? (!options.model?.trim() && options.taskType ? routeModelForTask(options.taskType) : undefined);
+  const model = options.model?.trim() || routing?.model || getConfiguredModel();
   const base = options.base?.trim() || "HEAD";
   const cwd = options.cwd ?? process.cwd();
   const client = options.complete ? undefined : createLlmClient();
@@ -93,6 +104,7 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
     return llm.chat.completions.create(request);
   });
   const executeTool = options.executeTool ?? agentToolRegistry;
+  const contextManager = new ContextManager();
 
   const messages: ChatCompletionMessageParam[] = [
     { role: "system", content: AGENT_SYSTEM_PROMPT },
@@ -111,9 +123,10 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
 
   const maxTurns = 6 + policy.maxRetries * 4;
   for (let turn = 0; turn < maxTurns; turn++) {
+    const context = contextManager.prepare(messages);
     const response = await complete({
       model,
-      messages,
+      messages: context.messages,
       tools: AGENT_TOOLS,
       tool_choice: "auto"
     });
@@ -127,7 +140,12 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
       at: new Date().toISOString(),
       type: "model_response",
       model: extractResponseMetadata(response, model),
-      usage: responseUsage
+      usage: responseUsage,
+      context: {
+        estimatedTokens: context.estimatedTokens,
+        estimatedTokensBefore: context.estimatedTokensBefore,
+        droppedMessages: context.droppedMessages
+      }
     });
 
     const calls = response.choices[0]?.message.tool_calls ?? [];
@@ -191,9 +209,10 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
     if (stoppedByFailure || stoppedByToolLimit) break;
 
     if (passedInThisTurn) {
+      const finalContext = contextManager.prepare(messages);
       const finalResponse = await complete({
         model,
-        messages,
+        messages: finalContext.messages,
         tool_choice: "none"
       });
       const finalAssistantMessage = assistantMessage(finalResponse);
@@ -204,7 +223,12 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
         at: new Date().toISOString(),
         type: "model_response",
         model: extractResponseMetadata(finalResponse, model),
-        usage: finalUsage
+        usage: finalUsage,
+        context: {
+          estimatedTokens: finalContext.estimatedTokens,
+          estimatedTokensBefore: finalContext.estimatedTokensBefore,
+          droppedMessages: finalContext.droppedMessages
+        }
       });
       finalMessage = getText(finalResponse);
       status = "verified";
@@ -221,6 +245,7 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
     correctionAttempts,
     verificationAttempts,
     ...(verification ? { verification } : {}),
+    ...(routing ? { routing } : {}),
     usage,
     events
   };

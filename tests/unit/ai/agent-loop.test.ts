@@ -137,4 +137,27 @@ describe("minimal integrated agent loop", () => {
     expect(result.correctionAttempts).toBe(0);
     expect(complete).toHaveBeenCalledTimes(1);
   });
+
+  it("routes direct agent calls by task type and records the decision", async () => {
+    vi.stubEnv("VERIFY_MODEL_SECURITY", "routed-security-model");
+    try {
+      const complete = vi.fn().mockResolvedValueOnce(response({ content: "I need to inspect the task." }));
+      const result = await runAgent({
+        task: "Review this authorization change",
+        taskType: "security",
+        maxRetries: 0,
+        complete,
+        executeTool: vi.fn()
+      });
+      expect(result.model).toBe("routed-security-model");
+      expect(result.routing).toMatchObject({
+        taskType: "security",
+        source: "task-specific",
+        model: "routed-security-model"
+      });
+      expect(complete.mock.calls[0]?.[0].model).toBe("routed-security-model");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });

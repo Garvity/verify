@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import type OpenAI from "openai";
 
-import { createLlmClient } from "./client.js";
+import { AsyncResultCache } from "../context/cache.js";
+import { createLlmClient, readGatewayConfig } from "./client.js";
 
 export interface AvailableModel {
   id: string;
@@ -10,6 +12,9 @@ export interface AvailableModel {
 export interface ModelsClient {
   models: Pick<OpenAI["models"], "list">;
 }
+
+const modelDiscoveryCache = new AsyncResultCache<AvailableModel[]>(32);
+const MODEL_CACHE_TTL_MS = 60_000;
 
 export function getConfiguredModel(
   env: Record<string, string | undefined> = process.env
@@ -23,8 +28,19 @@ export function getConfiguredModel(
 
 /** Return the model IDs reported by OpenRouter; callers should not guess IDs. */
 export async function discoverModels(
-  client: ModelsClient = createLlmClient()
+  client?: ModelsClient
 ): Promise<AvailableModel[]> {
+  if (!client) {
+    const config = readGatewayConfig();
+    const credentialFingerprint = createHash("sha256").update(config.apiKey).digest("hex");
+    const cacheKey = config.baseURL + ":" + credentialFingerprint;
+    return modelDiscoveryCache.getOrLoad(cacheKey, MODEL_CACHE_TTL_MS, async () => {
+      const page = await createLlmClient(config).models.list();
+      return page.data
+        .map((model) => ({ id: model.id, ownedBy: model.owned_by }))
+        .sort((left, right) => left.id.localeCompare(right.id));
+    });
+  }
   const page = await client.models.list();
   return page.data
     .map((model) => ({ id: model.id, ownedBy: model.owned_by }))
@@ -33,7 +49,7 @@ export async function discoverModels(
 
 export async function assertModelAvailable(
   modelId: string,
-  client: ModelsClient = createLlmClient()
+  client?: ModelsClient
 ): Promise<void> {
   const models = await discoverModels(client);
   if (!models.some((model) => model.id === modelId)) {

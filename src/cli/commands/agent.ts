@@ -1,11 +1,12 @@
 import { runAgent } from "../../ai/agent/loop.js";
 import { loadProjectEnv } from "../../ai/gateway/env.js";
-import { assertModelAvailable, getConfiguredModel } from "../../ai/gateway/models.js";
+import { assertModelAvailable } from "../../ai/gateway/models.js";
+import { isTaskType, routeModelForTask } from "../../ai/gateway/router.js";
 import { loadConfig } from "../../config/loader.js";
 import { VerifyError } from "../../core/error.js";
 import { parseCommandArgs, requireStringOption } from "../arguments.js";
 
-const HELP = `Usage: verify agent --task <instruction> [--base <ref>] [--model <id>] [--format <terminal|json>]
+const HELP = `Usage: verify agent --task <instruction> [--base <ref>] [--model <id>] [--task-type <simple|coding|reasoning|security>] [--format <terminal|json>]
 
 Run the minimal OpenRouter coding loop. The agent can edit src/ files outside verification controls and will run verify_changes.`;
 
@@ -14,6 +15,7 @@ export async function agentCommand(args: string[]): Promise<number> {
     task: { type: "string" },
     base: { type: "string" },
     model: { type: "string" },
+    "task-type": { type: "string" },
     format: { type: "string" }
   });
   if (values.help) {
@@ -25,6 +27,13 @@ export async function agentCommand(args: string[]): Promise<number> {
   if (!task) throw new VerifyError("INVALID_ARGUMENTS", "--task is required.");
   const base = requireStringOption(values.base, "base") ?? "HEAD";
   const modelOption = requireStringOption(values.model, "model");
+  const taskTypeOption = requireStringOption(values["task-type"], "task-type") ?? "coding";
+  if (!isTaskType(taskTypeOption)) {
+    throw new VerifyError("INVALID_ARGUMENTS", "--task-type must be simple, coding, reasoning or security.");
+  }
+  const route = modelOption
+    ? { model: modelOption, taskType: taskTypeOption, source: "explicit" as const, reason: "Selected explicitly with --model." }
+    : routeModelForTask(taskTypeOption);
   const format = values.format ?? "terminal";
   if (format !== "terminal" && format !== "json") {
     throw new VerifyError("INVALID_ARGUMENTS", "--format must be terminal or json.");
@@ -32,19 +41,21 @@ export async function agentCommand(args: string[]): Promise<number> {
 
   loadProjectEnv();
   const config = await loadConfig();
-  const model = modelOption ?? getConfiguredModel();
+  const model = route.model;
   await assertModelAvailable(model);
   const result = await runAgent({
     task,
     base,
     model,
     maxRetries: config.agent.maxRetries,
-    protectedPaths: config.protectedPaths
+    protectedPaths: config.protectedPaths,
+    routing: route
   });
 
   if (format === "json") {
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   } else {
+    process.stdout.write("Task type: " + route.taskType + " (" + route.source + ")\nRouting: " + route.reason + "\n");
     process.stdout.write(`VERIFY AGENT\n\nStatus: ${result.status}\nModel: ${result.model}\n`);
     process.stdout.write(`Verification attempts: ${result.verificationAttempts}\nCorrection attempts: ${result.correctionAttempts}\n`);
     if (result.verification) {
