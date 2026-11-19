@@ -12,7 +12,8 @@
     "test:coverage": "vitest run --coverage",
     "mcp": "node dist/mcp/main.js",
     "mcp:dev": "tsx src/mcp/main.ts",
-    "test:mcp": "vitest run tests/integration/mcp"
+    "test:mcp": "vitest run tests/integration/mcp",
+    "gateway:check": "tsx src/ai/gateway/test.ts"
   },
   "keywords": [],
   "author": "",

@@ -1,15 +1,72 @@
 import OpenAI from "openai";
 
-const baseURL = process.env.FREELLMAPI_BASE_URL;
-const apiKey = process.env.FREELLMAPI_API_KEY;
+export const DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
 
-if (!baseURL || !apiKey) {
-  throw new Error("FreeLLMAPI configuration is missing.");
+export interface GatewayConfig {
+  baseURL: string;
+  apiKey: string;
+  timeoutMs: number;
+  maxRetries: number;
 }
 
-export const llm = new OpenAI({
-  baseURL,
-  apiKey,
-  timeout: 60_000,
-  maxRetries: 2
-});
+export type GatewayEnvironment = Record<string, string | undefined>;
+
+function positiveInteger(
+  value: string | undefined,
+  fallback: number,
+  name: string,
+  maximum: number
+): number {
+  if (value === undefined || value.trim() === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) {
+    throw new Error(`${name} must be an integer between 1 and ${maximum}.`);
+  }
+  return parsed;
+}
+
+export function readGatewayConfig(
+  env: GatewayEnvironment = process.env
+): GatewayConfig {
+  const baseURL = (env.OPENROUTER_BASE_URL ?? DEFAULT_OPENROUTER_BASE_URL).trim();
+  let parsedURL: URL;
+  try {
+    parsedURL = new URL(baseURL);
+  } catch {
+    throw new Error("OPENROUTER_BASE_URL must be a valid HTTP(S) URL.");
+  }
+
+  if (
+    !["http:", "https:"].includes(parsedURL.protocol) ||
+    parsedURL.username !== "" ||
+    parsedURL.password !== "" ||
+    parsedURL.search !== "" ||
+    parsedURL.hash !== ""
+  ) {
+    throw new Error("OPENROUTER_BASE_URL must be an HTTP(S) URL without credentials, query, or fragment.");
+  }
+
+  const apiKey = env.OPENROUTER_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("OpenRouter API key is missing. Set OPENROUTER_API_KEY in the environment or .env.");
+  }
+
+  return {
+    baseURL: parsedURL.toString().replace(/\/+$/, ""),
+    apiKey,
+    timeoutMs: positiveInteger(env.VERIFY_LLM_TIMEOUT_MS, 60_000, "VERIFY_LLM_TIMEOUT_MS", 300_000),
+    maxRetries: positiveInteger(env.VERIFY_LLM_MAX_RETRIES, 2, "VERIFY_LLM_MAX_RETRIES", 5)
+  };
+}
+
+/** Create an SDK client only when an AI workflow is explicitly requested. */
+export function createLlmClient(
+  config: GatewayConfig = readGatewayConfig()
+): OpenAI {
+  return new OpenAI({
+    baseURL: config.baseURL,
+    apiKey: config.apiKey,
+    timeout: config.timeoutMs,
+    maxRetries: config.maxRetries
+  });
+}

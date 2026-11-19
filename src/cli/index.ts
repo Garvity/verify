@@ -4,8 +4,10 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { VerifyError } from "../core/error.js";
+import { agentCommand } from "./commands/agent.js";
 import { checkCommand } from "./commands/check.js";
 import { initCommand } from "./commands/init.js";
+import { modelsCommand } from "./commands/models.js";
 import { rulesCommand } from "./commands/rules.js";
 import { scanCommand } from "./commands/scan.js";
 
@@ -18,6 +20,8 @@ Commands:
   check    Scan changes and run enabled quality commands
   init     Create a default .verifyrc.json
   rules    List implemented verification rules
+  models   List models exposed by OpenRouter
+  agent    Run the minimal integrated coding agent
 
 Run "verify <command> --help" for command options.`;
 
@@ -46,6 +50,8 @@ export async function runCli(args: string[]): Promise<number> {
       case "check": return await checkCommand(commandArgs);
       case "init": return await initCommand(commandArgs);
       case "rules": return await rulesCommand(commandArgs);
+      case "models": return await modelsCommand(commandArgs);
+      case "agent": return await agentCommand(commandArgs);
       default:
         throw new VerifyError("INVALID_ARGUMENTS", `Unknown command '${command}'.\n\n${USAGE}`);
     }

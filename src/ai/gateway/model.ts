@@ -1,7 +1,8 @@
-export const MODEL_CONFIG = {
-  default: process.env.VERIFY_MODEL
-};
+import { getConfiguredModel } from "./models.js";
 
-if (!MODEL_CONFIG.default) {
-  throw new Error("VERIFY_MODEL is not configured.");
-}
+/** Compatibility surface retained for callers of the earlier gateway stub. */
+export const MODEL_CONFIG = {
+  get default(): string {
+    return getConfiguredModel();
+  }
+};
