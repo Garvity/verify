@@ -1,5 +1,7 @@
 
 export type VerifyErrorCode =
+  | "INVALID_ARGUMENTS"
+  | "CONFIG_EXISTS"
   | "CONFIG_NOT_FOUND"
   | "CONFIG_INVALID"
   | "CONFIG_PARSE_ERROR"
