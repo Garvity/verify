@@ -5,7 +5,7 @@ import type { ParsedFileDiff } from "../../git/diff-parser.js";
 const SENSITIVE_FILE_RULES = [
   {
     id: "SENSITIVE_ENV_FILE",
-    pattern: /(^|\/)\.env(?:\..+)?$/,
+    pattern: /(^|\/)\.env(?:\.(?!(?:example|sample|template)$).+)?$/i,
     description: "Environment file was changed"
   },
   {
@@ -15,7 +15,7 @@ const SENSITIVE_FILE_RULES = [
   },
   {
     id: "SENSITIVE_CREDENTIALS",
-    pattern: /(^|\/)(?:credentials|secrets)(?:\.[^/]*)?$/i,
+    pattern: /(^|\/)(?:credentials|secrets)(?:\.(?:json|ya?ml|toml|env|txt|csv|db|sqlite|conf|config|properties|ini|xml))?$/i,
     description: "Credentials or secrets file was changed"
   },
   {

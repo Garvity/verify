@@ -37,7 +37,7 @@ function globToRegExp(pattern: string): RegExp {
   return new RegExp(expression);
 }
 
-function matchesProtectedPath(
+export function matchesProtectedPath(
   filePath: string,
   protectedPatterns: string[]
 ): boolean {

@@ -11,6 +11,8 @@ import { detectConfigChanges } from "../../src/analyzers/structural/config-chang
 import { evaluatePolicies } from "../../src/policies/engine.js";
 import { VerifyConfigSchema } from "../../src/config/schema.js";
 
+const fakeGithubToken = ["ghp_", "123456789012345678901234"].join("");
+
 const sampleFiles: ParsedFileDiff[] = [
   {
     oldPath: "src/auth.ts",
@@ -22,7 +24,7 @@ const sampleFiles: ParsedFileDiff[] = [
       {
         type: "added",
         lineNumber: 10,
-        content: 'const apiKey = "ghp_123456789012345678901234";'
+        content: `const githubToken = "${fakeGithubToken}";`
       }
     ],
     removedLines: []
@@ -83,6 +85,15 @@ describe("Phase 3 analyzers", () => {
     expect(findings[0].message).not.toContain("ghp_");
   });
 
+  it("detects a generic API key assembled at runtime", () => {
+    const content = ["const apiKey = \"", "example-secret-value-123", "\";"].join("");
+    const file: ParsedFileDiff = {
+      ...sampleFiles[0]!,
+      addedLines: [{ type: "added", lineNumber: 1, content }]
+    };
+    expect(detectSecrets([file]).map((finding) => finding.ruleId)).toContain("SECRET_API_KEY");
+  });
+
   it("should detect sensitive files", () => {
     const findings = detectSensitiveFiles(sampleFiles);
 
@@ -91,6 +102,12 @@ describe("Phase 3 analyzers", () => {
         finding.ruleId === "SENSITIVE_ENV_FILE"
       )
     ).toBe(true);
+    expect(detectSensitiveFiles([
+      { ...sampleFiles[0]!, newPath: "src/analyzers/security/secrets.ts" }
+    ])).toHaveLength(0);
+    expect(detectSensitiveFiles([
+      { ...sampleFiles[0]!, newPath: "secrets.json" }
+    ])[0]?.ruleId).toBe("SENSITIVE_CREDENTIALS");
   });
 
   it("should detect deleted test files", () => {
