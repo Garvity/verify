@@ -58,7 +58,7 @@ export async function runGatewayCheck(): Promise<GatewayCheckResult> {
       messages: [{ role: "user", content: "Call report_probe with marker set to 'ok'." }],
       tools: [TOOL_PROBE],
       tool_choice: { type: "function", function: { name: "report_probe" } },
-      max_completion_tokens: 64
+      max_completion_tokens: 512
     });
     toolCallingSupported = probe.choices[0]?.message.tool_calls?.some(
       (call) => call.type === "function" && call.function.name === "report_probe"
