@@ -1,0 +1,13 @@
+{
+  "id": "truncate-text",
+  "description": "Implement truncate in src/text.mjs. It should return the input unchanged when its length is at most maxLength. Otherwise return the first maxLength - 1 characters followed by a single ellipsis character. For maxLength less than 1, return an empty string.",
+  "expectedOutcome": "truncate follows the documented limits and ellipsis behavior for short, long, and zero-length cases.",
+  "fixture": "fixtures/feature-addition",
+  "hiddenTests": ["hidden-tests/truncate-text.test.mjs"],
+  "maxRetries": 2,
+  "testTimeoutMs": 30000,
+  "verification": {
+    "requirePass": true,
+    "forbiddenRuleIds": []
+  }
+}

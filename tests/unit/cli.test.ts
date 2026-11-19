@@ -38,4 +38,10 @@ describe("CLI command dispatch", () => {
     await expect(runCli(["scan", "--help"])).resolves.toBe(0);
     expect(stdout).toContain("--format <terminal|json|markdown>");
   });
+
+  it("shows the explicit multi-model evaluation invocation", async () => {
+    await expect(runCli(["eval", "--help"])).resolves.toBe(0);
+    expect(stdout).toContain("--benchmark <tasks-dir|task.json>");
+    expect(stdout).toContain("--models <model-a,model-b");
+  });
 });
