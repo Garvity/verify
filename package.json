@@ -9,7 +9,10 @@
     "start": "node dist/cli/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "mcp": "node dist/mcp/main.js",
+    "mcp:dev": "tsx src/mcp/main.ts",
+    "test:mcp": "vitest run tests/integration/mcp"
   },
   "keywords": [],
   "author": "",
@@ -32,6 +35,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@modelcontextprotocol/inspector": "^2.15.0",
     "@types/node": "^26.6.6",
     "@vitest/coverage-v8": "^5.1.0",
     "tsx": "^4.23.15",
