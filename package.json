@@ -1,25 +1,41 @@
 {
   "name": "verify",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Deterministic verification, MCP tooling, and model evaluation for AI coding agents.",
+  "main": "./dist/cli/index.js",
+  "files": [
+    "dist/**",
+    "benchmarks/tasks/**",
+    "benchmarks/fixtures/**",
+    "benchmarks/hidden-tests/**",
+    "README.md",
+    "docs/**",
+    "LICENSE",
+    ".env.example"
+  ],
   "scripts": {
     "dev": "tsx src/cli/index.ts",
-    "build": "tsc",
+    "build": "node scripts/build.mjs",
     "start": "node dist/cli/index.js",
-    "test": "vitest run",
+    "test": "vitest run tests/unit tests/integration tests/adversarial",
+    "test:e2e": "vitest run tests/e2e",
+    "test:security": "vitest run tests/adversarial",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run tests/unit tests/integration tests/adversarial --coverage",
     "mcp": "node dist/mcp/main.js",
     "mcp:dev": "tsx src/mcp/main.ts",
     "test:mcp": "vitest run tests/integration/mcp",
     "gateway:check": "tsx src/ai/gateway/test.ts",
     "http": "node dist/http/main.js",
-    "http:dev": "tsx src/http/main.ts"
+    "http:dev": "tsx src/http/main.ts",
+    "pack:check": "pnpm build && pnpm pack --dry-run"
   },
-  "keywords": [],
+  "keywords": ["ai-agents", "verification", "mcp", "security", "benchmark"],
   "author": "",
   "license": "ISC",
+  "engines": {
+    "node": ">=20.6"
+  },
   "devEngines": {
     "packageManager": {
       "name": "pnpm",

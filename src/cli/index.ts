@@ -9,8 +9,10 @@ import { checkCommand } from "./commands/check.js";
 import { evalCommand } from "./commands/eval.js";
 import { initCommand } from "./commands/init.js";
 import { modelsCommand } from "./commands/models.js";
+import { reportCommand } from "./commands/report.js";
 import { rulesCommand } from "./commands/rules.js";
 import { scanCommand } from "./commands/scan.js";
+import { versionCommand } from "./commands/version.js";
 
 const USAGE = `verify — deterministic verification for code changes
 
@@ -24,6 +26,8 @@ Commands:
   models   List models exposed by OpenRouter
   agent    Run the minimal integrated coding agent
   eval     Compare two or three models on benchmark tasks
+  report   Render a saved verification or evaluation result
+  version  Display the installed version
 
 Run "verify <command> --help" for command options.`;
 
@@ -55,6 +59,8 @@ export async function runCli(args: string[]): Promise<number> {
       case "models": return await modelsCommand(commandArgs);
       case "agent": return await agentCommand(commandArgs);
       case "eval": return await evalCommand(commandArgs);
+      case "report": return await reportCommand(commandArgs);
+      case "version": return await versionCommand(commandArgs);
       default:
         throw new VerifyError("INVALID_ARGUMENTS", `Unknown command '${command}'.\n\n${USAGE}`);
     }
