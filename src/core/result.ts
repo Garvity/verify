@@ -16,12 +16,42 @@ export interface VerificationSummary {
   blockingFindings: number;
 }
 
+/** A configured quality command executed during `verify check`. */
+export interface VerificationCheck {
+  id: "tests" | "lint" | "typecheck";
+  command: string[];
+  exitCode: number | null;
+  signal: NodeJS.Signals | null;
+  passed: boolean;
+  timedOut: boolean;
+  outputTruncated: boolean;
+  durationMs: number;
+}
+
+export interface BaselineGroup<T> {
+  introduced: T[];
+  persistent: T[];
+  resolved: T[];
+}
+
+export interface BaselineComparison {
+  findings: BaselineGroup<Finding>;
+  /** Omitted when either result did not run quality checks. */
+  checkFailures?: BaselineGroup<VerificationCheck>;
+}
+
 export interface VerificationResult {
   id: string;
 
   status: VerificationStatus;
 
   findings: Finding[];
+
+  /** Present when the run included configured quality commands. */
+  checks?: VerificationCheck[];
+
+  /** Informational comparison; current blocking findings still determine status. */
+  baselineComparison?: BaselineComparison;
 
   summary: VerificationSummary;
 

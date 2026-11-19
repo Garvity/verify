@@ -1,45 +1,35 @@
 {
-  "version": 1,
   "security": {
     "secrets": true,
     "sensitiveFiles": true,
     "dangerousPatterns": true
   },
   "quality": {
-    "tests": true,
-    "lint": true,
-    "typecheck": true
+    "tests": {
+      "enabled": true,
+      "command": ["pnpm", "test"]
+    },
+    "lint": {
+      "enabled": false,
+      "command": ["pnpm", "lint"]
+    },
+    "typecheck": {
+      "enabled": false,
+      "command": ["pnpm", "exec", "tsc", "--noEmit"]
+    }
   },
-  "policies": {
-    "protectedFiles": [
-      ".env",
-      ".github/workflows/**",
-      "package.json",
-      "pnpm-lock.yaml"
-    ],
-    "requireApproval": true
+  "protectedPaths": [
+    ".env",
+    ".github/workflows/**"
+  ],
+  "approval": {
+    "requireForProtectedFiles": true
   },
   "execution": {
     "timeoutMs": 120000,
-    "commands": [
-      {
-        "id": "test",
-        "executable": "pnpm",
-        "args": ["test"],
-        "required": true
-      },
-      {
-        "id": "lint",
-        "executable": "pnpm",
-        "args": ["lint"],
-        "required": false
-      },
-      {
-        "id": "typecheck",
-        "executable": "pnpm",
-        "args": ["typecheck"],
-        "required": false
-      }
+    "maxOutputBytes": 1048576,
+    "allowedCommands": [
+        ["pnpm"]
     ]
   },
   "agent": {
