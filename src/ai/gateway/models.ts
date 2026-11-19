@@ -21,12 +21,12 @@ export function getConfiguredModel(
 ): string {
   const model = env.VERIFY_MODEL?.trim();
   if (!model) {
-    throw new Error("No model is configured. Set VERIFY_MODEL to an ID returned by the OpenRouter models endpoint.");
+    throw new Error("No model is configured. Set VERIFY_MODEL to an ID returned by the configured provider's models endpoint.");
   }
   return model;
 }
 
-/** Return the model IDs reported by OpenRouter; callers should not guess IDs. */
+/** Return the model IDs reported by the configured provider; callers should not guess IDs. */
 export async function discoverModels(
   client?: ModelsClient
 ): Promise<AvailableModel[]> {
@@ -54,6 +54,6 @@ export async function assertModelAvailable(
   const models = await discoverModels(client);
   if (!models.some((model) => model.id === modelId)) {
     const available = models.map((model) => model.id).join(", ") || "none";
-    throw new Error(`Configured model '${modelId}' was not returned by OpenRouter. Available models: ${available}.`);
+    throw new Error(`Configured model '${modelId}' was not returned by the configured provider. Available models: ${available}.`);
   }
 }

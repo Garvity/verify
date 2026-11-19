@@ -94,4 +94,4 @@ The repository includes an in-memory MCP client/server integration test. Run it 
 pnpm test:mcp
 ```
 
-For a client-level check, start `pnpm mcp:dev` through an MCP inspector or an existing coding agent and confirm that it lists both tools, calls `verify_changes`, and receives structured findings. No OpenRouter credentials are needed for these tools.
+For a client-level check, start `pnpm mcp:dev` through an MCP inspector or an existing coding agent and confirm that it lists both tools, calls `verify_changes`, and receives structured findings. No model provider credentials are needed for these tools.

@@ -9,7 +9,7 @@
 - Policy engine: applies protected-path rules and blocking behavior.
 - Baseline comparator: classifies findings and check failures as introduced, persistent or resolved.
 - MCP and HTTP adapters: expose the same orchestrator without duplicating verification logic.
-- OpenRouter gateway and agent: optional model requests, restricted file tools, bounded retries and deterministic re-verification.
+- OpenAI-compatible gateway and agent: optional model requests, restricted file tools, bounded retries and deterministic re-verification.
 - Evaluation runner: copies each task fixture into a separate temporary Git repository, runs explicit models, executes private tests and records results.
 
 ## Verification flow
@@ -34,4 +34,4 @@ The LLM cannot mark its own changes as passing. Only a passing result from the d
 
 ## Caching and context
 
-Only OpenRouter model discovery is cached, in memory, for 60 seconds using gateway URL and a one-way API-key fingerprint. Verification and benchmark outcomes are never reused. Context trimming keeps initial instructions, complete tool exchanges and the latest verification result while dropping older complete turns.
+Only provider model discovery is cached, in memory, for 60 seconds using gateway URL and a one-way API-key fingerprint. Verification and benchmark outcomes are never reused. Context trimming keeps initial instructions, complete tool exchanges and the latest verification result while dropping older complete turns.

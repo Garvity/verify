@@ -8,8 +8,8 @@ Run commands from the repository being checked. The development form is pnpm dev
 | scan | Analyze Git changes, or all non-ignored text files with --all |
 | check | Scan changes and run enabled quality checks |
 | rules | List implemented rule IDs and descriptions |
-| models | List model IDs returned by OpenRouter |
-| agent | Run the restricted OpenRouter coding loop |
+| models | List model IDs returned by the configured provider |
+| agent | Run the restricted model coding loop |
 | eval | Run the same benchmark tasks against two or three explicit models |
 | report | Render a saved verification or evaluation JSON result |
 | version | Display the package version |

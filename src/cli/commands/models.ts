@@ -5,7 +5,7 @@ import { parseCommandArgs } from "../arguments.js";
 
 const HELP = `Usage: verify models [--format <terminal|json>]
 
-List model IDs exposed by OpenRouter.`;
+List model IDs exposed by the configured provider.`;
 
 export async function modelsCommand(args: string[]): Promise<number> {
   const { values } = parseCommandArgs(args, { format: { type: "string" } });

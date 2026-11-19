@@ -1,10 +1,10 @@
 # Model evaluation
 
-The benchmark runner compares two or three explicit OpenRouter model IDs on the same task set. It gives every model/task pair a fresh copy of the same fixture, creates an isolated Git baseline, runs the minimal agent, then checks the final workspace with the deterministic verifier and private functional tests.
+The benchmark runner compares two or three explicit model IDs exposed by the configured OpenAI-compatible provider on the same task set. It gives every model/task pair a fresh copy of the same fixture, creates an isolated Git baseline, runs the minimal agent, then checks the final workspace with the deterministic verifier and private functional tests.
 
 ## Prepare a run
 
-1. Create an OpenRouter key and store it as **OPENROUTER_API_KEY** in the project .env. Do not commit that file.
+1. Store your provider's endpoint as **VERIFY_LLM_BASE_URL** and key as **VERIFY_LLM_API_KEY** in the project .env. Do not commit that file.
 2. List available model IDs:
 
        pnpm dev models
@@ -32,7 +32,7 @@ Fixtures must include .verifyrc.json, keep all security analyzers enabled, and d
 
 ## Pricing
 
-Costs are reported as n/a unless an explicit pricing file is provided. Rates are assumptions supplied by the evaluator, not fetched or inferred from OpenRouter:
+Costs are reported as n/a unless an explicit pricing file is provided. Rates are assumptions supplied by the evaluator, not fetched from the provider:
 
     {
       "provider/model-id": {
@@ -42,7 +42,7 @@ Costs are reported as n/a unless an explicit pricing file is provided. Rates are
       }
     }
 
-Pass the file with --pricing prices.json. The result stores the rates' assumptions alongside token counts and calculated costs. If OpenRouter omits token usage, cost remains unknown.
+Pass the file with --pricing prices.json. The result stores the rates' assumptions alongside token counts and calculated costs. If the provider omits token usage, cost remains unknown.
 
 ## Reproducibility and interpretation
 

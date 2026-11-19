@@ -6,11 +6,11 @@ import { extractResponseMetadata } from "../../../src/ai/gateway/metadata.js";
 import { assertModelAvailable, discoverModels, getConfiguredModel } from "../../../src/ai/gateway/models.js";
 import { addUsage, EMPTY_USAGE, summarizeUsage } from "../../../src/ai/gateway/usage.js";
 
-describe("OpenRouter gateway configuration", () => {
-  it("uses the documented OpenRouter endpoint and validates the API key lazily", () => {
-    expect(() => readGatewayConfig({})).toThrow("OPENROUTER_API_KEY");
-    expect(readGatewayConfig({ OPENROUTER_API_KEY: " local-token " })).toEqual({
-      baseURL: "https://openrouter.ai/api/v1",
+describe("OpenAI-compatible gateway configuration", () => {
+  it("uses the configured provider endpoint and validates the API key lazily", () => {
+    expect(() => readGatewayConfig({})).toThrow("VERIFY_LLM_API_KEY");
+    expect(readGatewayConfig({ VERIFY_LLM_API_KEY: " local-token " })).toEqual({
+      baseURL: "https://100milionseek.top/v1",
       apiKey: "local-token",
       timeoutMs: 60_000,
       maxRetries: 2
@@ -19,14 +19,23 @@ describe("OpenRouter gateway configuration", () => {
 
   it("validates endpoint and retry settings without exposing credential values", () => {
     expect(() => readGatewayConfig({
-      OPENROUTER_API_KEY: "local-token",
-      OPENROUTER_BASE_URL: "file:///tmp/api"
+      VERIFY_LLM_API_KEY: "local-token",
+      VERIFY_LLM_BASE_URL: "file:///tmp/api"
     })).toThrow("HTTP(S) URL");
     expect(() => readGatewayConfig({
-      OPENROUTER_API_KEY: "local-token",
+      VERIFY_LLM_API_KEY: "local-token",
       VERIFY_LLM_MAX_RETRIES: "99"
     })).toThrow("VERIFY_LLM_MAX_RETRIES");
-    expect(() => readGatewayConfig({ OPENROUTER_API_KEY: "local-token" })).not.toThrow();
+    expect(() => readGatewayConfig({ VERIFY_LLM_API_KEY: "local-token" })).not.toThrow();
+  });
+
+  it("uses provider-neutral settings and ignores legacy OpenRouter variables", () => {
+    expect(readGatewayConfig({
+      VERIFY_LLM_API_KEY: "local-token",
+      VERIFY_LLM_BASE_URL: "https://gateway.example/v1",
+      OPENROUTER_API_KEY: "legacy-token",
+      OPENROUTER_BASE_URL: "https://legacy.example/v1"
+    }).baseURL).toBe("https://gateway.example/v1");
   });
 
   it("requires an explicitly configured model id", () => {
@@ -35,7 +44,7 @@ describe("OpenRouter gateway configuration", () => {
   });
 });
 
-describe("OpenRouter response accounting", () => {
+describe("provider response accounting", () => {
   it("captures the served model, optional provider, and usage details", () => {
     const response = {
       model: "served-model",

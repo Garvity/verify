@@ -8,7 +8,7 @@ import { parseCommandArgs, requireStringOption } from "../arguments.js";
 
 const HELP = `Usage: verify agent --task <instruction> [--base <ref>] [--model <id>] [--task-type <simple|coding|reasoning|security>] [--format <terminal|json>]
 
-Run the minimal OpenRouter coding loop. The agent can edit src/ files outside verification controls and will run verify_changes.`;
+Run the minimal model-backed coding loop. The agent can edit src/ files outside verification controls and will run verify_changes.`;
 
 export async function agentCommand(args: string[]): Promise<number> {
   const { values } = parseCommandArgs(args, {

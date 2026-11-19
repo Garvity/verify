@@ -11,7 +11,7 @@ import { parseCommandArgs, requireStringOption } from "../arguments.js";
 
 const HELP =
   "Usage: verify eval --benchmark <tasks-dir|task.json> --models <model-a,model-b[,model-c]> [--pricing <prices.json>] [--output <path>]\n\n" +
-  "Run identical benchmark tasks for two or three explicit OpenRouter model IDs.\n" +
+  "Run identical benchmark tasks for two or three explicit model IDs from the configured provider.\n" +
   "Each model/task pair starts from a fresh fixture copy and temporary Git commit.";
 
 function defaultOutputPath(root: string, createdAt: string): string {

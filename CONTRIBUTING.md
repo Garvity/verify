@@ -7,7 +7,7 @@
     pnpm test
     pnpm test:e2e
 
-MCP changes should also pass pnpm test:mcp. The OpenRouter key is optional and must stay in the ignored .env file. Do not use live provider calls in automated tests.
+MCP changes should also pass pnpm test:mcp. Provider credentials are optional and must stay in the ignored .env file. Do not use live provider calls in automated tests.
 
 ## Make changes
 

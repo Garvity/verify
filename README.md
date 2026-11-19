@@ -1,8 +1,8 @@
 # verify
 
-verify is a deterministic verification layer for AI-assisted code changes. It analyzes Git diffs, reports security and structural findings, runs configured quality checks, and exposes the same engine through a CLI and MCP server. Optional OpenRouter tools provide a small self-correcting agent and a reproducible multi-model benchmark runner.
+verify is a deterministic verification layer for AI-assisted code changes. It analyzes Git diffs, reports security and structural findings, runs configured quality checks, and exposes the same engine through a CLI and MCP server. Optional OpenAI-compatible provider tools provide a small self-correcting agent and a reproducible multi-model benchmark runner.
 
-Verification does not depend on an LLM. The CLI, MCP tools, and local HTTP API work without an OpenRouter key.
+Verification does not depend on an LLM. The CLI, MCP tools, and local HTTP API work without provider credentials.
 
 ## Requirements
 
@@ -43,9 +43,9 @@ The stdio MCP server exposes verify_changes and get_findings. It has no dependen
 
 See docs/MCP.md for Codex desktop and OpenCode setup. The included opencode.json connects OpenCode to this checkout.
 
-## Optional OpenRouter agent
+## Optional model agent
 
-Copy .env.example to .env and set OPENROUTER_API_KEY. Keep .env out of source control.
+Copy .env.example to .env, then set VERIFY_LLM_API_KEY and VERIFY_LLM_BASE_URL for your OpenAI-compatible provider. Keep .env out of source control.
 
     pnpm dev models
     pnpm dev agent --task "Fix the bug described in the issue" --task-type coding

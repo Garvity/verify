@@ -41,7 +41,7 @@ export async function runGatewayCheck(): Promise<GatewayCheckResult> {
   const modelPage = await client.models.list();
   const models = modelPage.data.map((entry) => entry.id);
   if (!models.includes(model)) {
-    throw new Error(`VERIFY_MODEL '${model}' is unavailable. Run 'pnpm dev models' and choose an ID returned by OpenRouter.`);
+    throw new Error(`VERIFY_MODEL '${model}' is unavailable. Run 'pnpm dev models' and choose an ID returned by the configured provider.`);
   }
 
   const response = await client.chat.completions.create({
@@ -66,8 +66,8 @@ export async function runGatewayCheck(): Promise<GatewayCheckResult> {
     if (!toolCallingSupported) toolCallingError = "The model returned no report_probe function call.";
   } catch (error) {
     toolCallingError = error instanceof OpenAI.APIError
-      ? `OpenRouter rejected the tool-call probe${error.status ? ` (HTTP ${error.status})` : ""}.`
-      : "The tool-call probe failed; check OpenRouter and model availability.";
+      ? `The configured provider rejected the tool-call probe${error.status ? ` (HTTP ${error.status})` : ""}.`
+      : "The tool-call probe failed; check the configured provider and model availability.";
   }
 
   const metadata = extractResponseMetadata(response, model);
@@ -90,7 +90,9 @@ async function main(): Promise<void> {
     if (!result.toolCallingSupported) process.exitCode = 1;
   } catch (error) {
     const message = error instanceof Error ? error.message : "Gateway check failed.";
-    process.stderr.write(`OpenRouter check failed: ${message}\n`);
+    const apiKey = process.env.VERIFY_LLM_API_KEY;
+    const safeMessage = apiKey ? message.replaceAll(apiKey, "[redacted]") : message;
+    process.stderr.write(`Provider check failed: ${safeMessage}\n`);
     process.exitCode = 1;
   }
 }

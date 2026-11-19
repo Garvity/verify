@@ -7,7 +7,7 @@ Start it from the repository root:
     pnpm build
     pnpm http
 
-For development, use pnpm http:dev. The server listens on loopback at 127.0.0.1:4318 by default. VERIFY_HTTP_PORT can change the port; VERIFY_HTTP_HOST accepts only loopback hostnames and addresses. The process intentionally refuses remote binding and requires no OpenRouter key.
+For development, use pnpm http:dev. The server listens on loopback at 127.0.0.1:4318 by default. VERIFY_HTTP_PORT can change the port; VERIFY_HTTP_HOST accepts only loopback hostnames and addresses. The process intentionally refuses remote binding and requires no provider credentials.
 
 ## Endpoints
 

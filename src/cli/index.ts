@@ -23,7 +23,7 @@ Commands:
   check    Scan changes and run enabled quality commands
   init     Create a default .verifyrc.json
   rules    List implemented verification rules
-  models   List models exposed by OpenRouter
+  models   List models exposed by the configured provider
   agent    Run the minimal integrated coding agent
   eval     Compare two or three models on benchmark tasks
   report   Render a saved verification or evaluation result

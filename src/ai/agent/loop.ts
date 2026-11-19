@@ -131,7 +131,7 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
       tool_choice: "auto"
     });
     const message = assistantMessage(response);
-    if (!message) throw new Error("OpenRouter returned no assistant message.");
+    if (!message) throw new Error("The configured provider returned no assistant message.");
     messages.push(message);
 
     const responseUsage = summarizeUsage(response.usage);

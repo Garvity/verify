@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 
-export const DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1";
+export const DEFAULT_LLM_BASE_URL = "https://100milionseek.top/v1";
 
 export interface GatewayConfig {
   baseURL: string;
@@ -28,12 +28,12 @@ function positiveInteger(
 export function readGatewayConfig(
   env: GatewayEnvironment = process.env
 ): GatewayConfig {
-  const baseURL = (env.OPENROUTER_BASE_URL ?? DEFAULT_OPENROUTER_BASE_URL).trim();
+  const baseURL = (env.VERIFY_LLM_BASE_URL ?? DEFAULT_LLM_BASE_URL).trim();
   let parsedURL: URL;
   try {
     parsedURL = new URL(baseURL);
   } catch {
-    throw new Error("OPENROUTER_BASE_URL must be a valid HTTP(S) URL.");
+    throw new Error("VERIFY_LLM_BASE_URL must be a valid HTTP(S) URL.");
   }
 
   if (
@@ -43,12 +43,12 @@ export function readGatewayConfig(
     parsedURL.search !== "" ||
     parsedURL.hash !== ""
   ) {
-    throw new Error("OPENROUTER_BASE_URL must be an HTTP(S) URL without credentials, query, or fragment.");
+    throw new Error("VERIFY_LLM_BASE_URL must be an HTTP(S) URL without credentials, query, or fragment.");
   }
 
-  const apiKey = env.OPENROUTER_API_KEY?.trim();
+  const apiKey = env.VERIFY_LLM_API_KEY?.trim();
   if (!apiKey) {
-    throw new Error("OpenRouter API key is missing. Set OPENROUTER_API_KEY in the environment or .env.");
+    throw new Error("Provider API key is missing. Set VERIFY_LLM_API_KEY in the environment or .env.");
   }
 
   return {
