@@ -73,19 +73,85 @@ function truncateText(text: string, maxChars: number): string {
 }
 
 function shrinkMessage(message: ChatCompletionMessageParam, maxChars: number): ChatCompletionMessageParam {
+  let result = message;
   if (typeof message.content === "string" && message.content.length > maxChars) {
-    return { ...message, content: truncateText(message.content, maxChars) } as ChatCompletionMessageParam;
+    result = { ...message, content: truncateText(message.content, maxChars) } as ChatCompletionMessageParam;
   }
-  if (message.role === "assistant" && message.tool_calls?.length) {
-    const serialized = JSON.stringify(message);
-    if (serialized.length > maxChars) {
-      const safeCalls = message.tool_calls.map((call) => call.type === "function"
-        ? { ...call, function: { ...call.function, arguments: truncateText(call.function.arguments, Math.max(64, Math.floor(maxChars / message.tool_calls!.length))) } }
-        : call);
-      return { ...message, tool_calls: safeCalls };
+  if (result.role === "assistant" && result.tool_calls?.length) {
+    const functionCalls = result.tool_calls.filter((call) => call.type === "function");
+    if (serializedSize(result) > maxChars && functionCalls.length > 0) {
+      const argumentLength = functionCalls.reduce((total, call) => total + call.function.arguments.length, 0);
+      const argumentBudget = Math.max(0, maxChars - (serializedSize(result) - argumentLength));
+      let remainingBudget = argumentBudget;
+      let remainingCalls = functionCalls.length;
+      const safeCalls = result.tool_calls.map((call) => {
+        if (call.type !== "function") return call;
+        const allocation = Math.floor(remainingBudget / remainingCalls);
+        const argumentsValue = truncateText(call.function.arguments, allocation);
+        remainingBudget -= argumentsValue.length;
+        remainingCalls--;
+        return { ...call, function: { ...call.function, arguments: argumentsValue } };
+      });
+      result = { ...result, tool_calls: safeCalls };
     }
   }
-  return message;
+  return result;
+}
+
+function shrinkMessageContent(message: ChatCompletionMessageParam, maxChars: number): ChatCompletionMessageParam {
+  if (typeof message.content !== "string" || message.content.length <= maxChars) return message;
+  return { ...message, content: truncateText(message.content, maxChars) } as ChatCompletionMessageParam;
+}
+
+function shrinkToolArguments(
+  message: ChatCompletionMessageParam,
+  callIndex: number,
+  maxChars: number
+): ChatCompletionMessageParam {
+  if (message.role !== "assistant" || !message.tool_calls) return message;
+  const call = message.tool_calls[callIndex];
+  if (!call || call.type !== "function" || call.function.arguments.length <= maxChars) return message;
+  const toolCalls = message.tool_calls.map((entry, index) => {
+    if (index !== callIndex || entry.type !== "function") return entry;
+    return { ...entry, function: { ...entry.function, arguments: truncateText(entry.function.arguments, maxChars) } };
+  });
+  return { ...message, tool_calls: toolCalls };
+}
+
+function shrinkMessagesToLimit(messages: ChatCompletionMessageParam[], limit: number): ChatCompletionMessageParam[] {
+  let result = messages;
+  while (estimatedTokens(result) > limit) {
+    const overflowChars = (estimatedTokens(result) - limit) * 4 + 4;
+    let candidate: { messageIndex: number; field: "content" | "tool_arguments"; callIndex?: number } | undefined;
+    let candidateSize = 0;
+    for (let index = 0; index < result.length; index++) {
+      const message = result[index]!;
+      if (typeof message.content === "string" && message.content.length > candidateSize) {
+        candidate = { messageIndex: index, field: "content" };
+        candidateSize = message.content.length;
+      }
+      if (message.role === "assistant" && message.tool_calls) {
+        for (const [callIndex, call] of message.tool_calls.entries()) {
+          if (call.type === "function" && call.function.arguments.length > candidateSize) {
+            candidate = { messageIndex: index, field: "tool_arguments", callIndex };
+            candidateSize = call.function.arguments.length;
+          }
+        }
+      }
+    }
+    if (!candidate || candidateSize === 0) break;
+    const current = result[candidate.messageIndex]!;
+    const targetChars = Math.max(0, candidateSize - overflowChars);
+    const shortened = candidate.field === "content"
+      ? shrinkMessageContent(current, targetChars)
+      : shrinkToolArguments(current, candidate.callIndex!, targetChars);
+    if (serializedSize(shortened) >= serializedSize(current)) break;
+    result = result.map((message, index) => index === candidate.messageIndex ? shortened : message);
+  }
+  if (estimatedTokens(result) > limit) {
+    throw new Error("Mandatory conversation metadata exceeds the configured context token limit.");
+  }
+  return result;
 }
 
 function normalizeLimit(value: number): number {
@@ -150,7 +216,7 @@ export function prepareContext(
   const selected = groups.flatMap((group, index) => chosen.has(index)
     ? index === lastPinned ? pinnedToKeep : group.messages
     : []);
-  kept = [...prefix, ...selected];
+  kept = shrinkMessagesToLimit([...prefix, ...selected], limit);
 
   const after = estimatedTokens(kept);
   return {

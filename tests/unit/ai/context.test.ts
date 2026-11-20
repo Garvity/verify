@@ -55,6 +55,59 @@ describe("AI context and routing", () => {
     expect(prepared.estimatedTokens).toBeLessThanOrEqual(512);
   });
 
+  it("keeps serialized context within the configured token estimate after trimming large pinned messages", () => {
+    const messages = [
+      { role: "system", content: "system instructions ".repeat(1200) },
+      { role: "user", content: "the original task ".repeat(700) },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [{ id: "verify", type: "function", function: { name: "verify_changes", arguments: "{}" } }]
+      },
+      { role: "tool", tool_call_id: "verify", content: JSON.stringify({ ok: true, tool: "verify_changes", data: { status: "passed", detail: "verification output ".repeat(1600) } }) }
+    ] as ChatCompletionMessageParam[];
+
+    const prepared = prepareContext(messages, 512);
+
+    expect(prepared.estimatedTokens).toBeLessThanOrEqual(512);
+    expect(prepared.estimatedTokens).toBe(Math.ceil(prepared.messages.reduce((sum, message) => sum + JSON.stringify(message).length, 0) / 4));
+  });
+
+  it("continues shrinking tool arguments when a pinned assistant message also contains text", () => {
+    const calls = [
+      { id: "write", type: "function" as const, function: { name: "write_file", arguments: "x".repeat(8000) } },
+      { id: "verify", type: "function" as const, function: { name: "verify_changes", arguments: "{}" } }
+    ];
+    const messages = [
+      { role: "system", content: "system instructions" },
+      { role: "user", content: "the original task" },
+      { role: "assistant", content: "assistant response ".repeat(200), tool_calls: calls },
+      { role: "tool", tool_call_id: "write", content: "write accepted" },
+      { role: "tool", tool_call_id: "verify", content: JSON.stringify({ ok: true, tool: "verify_changes", data: { status: "passed" } }) }
+    ] as ChatCompletionMessageParam[];
+
+    const prepared = prepareContext(messages, 512);
+
+    expect(prepared.estimatedTokens).toBeLessThanOrEqual(512);
+    expect(prepared.messages.some((message) => message.role === "tool" && message.tool_call_id === "verify")).toBe(true);
+  });
+
+  it("fails clearly when mandatory tool metadata cannot fit the configured budget", () => {
+    const calls = Array.from({ length: 200 }, (_, index) => ({
+      id: `call-${index}`,
+      type: "function" as const,
+      function: { name: "verify_changes", arguments: "{}" }
+    }));
+    const messages = [
+      { role: "system", content: "system" },
+      { role: "user", content: "task" },
+      { role: "assistant", content: null, tool_calls: calls },
+      { role: "tool", tool_call_id: calls[0]!.id, content: JSON.stringify({ tool: "verify_changes" }) }
+    ] as ChatCompletionMessageParam[];
+
+    expect(() => prepareContext(messages, 512)).toThrow("Mandatory conversation metadata exceeds");
+  });
+
   it("uses task-specific model settings and records default fallback", () => {
     const taskRoute = routeModelForTask("security", {
       VERIFY_MODEL: "default/model",

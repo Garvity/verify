@@ -28,7 +28,13 @@ export function createVerifyHttpServer(options: VerifyHttpServerOptions = {}): S
   return createServer((request: IncomingMessage, response: ServerResponse) => {
     response.setHeader("x-content-type-options", "nosniff");
     response.setHeader("cache-control", "no-store");
-    const path = new URL(request.url ?? "/", "http://localhost").pathname;
+    let path: string;
+    try {
+      path = new URL(request.url ?? "/", "http://localhost").pathname;
+    } catch {
+      sendJson(response, 400, { error: "Invalid request URL." });
+      return;
+    }
     if (request.method === "GET" && path === "/findings") {
       respondWithFindings(response, latest);
       return;

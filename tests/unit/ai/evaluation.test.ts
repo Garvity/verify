@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,7 +7,7 @@ import { calculateCostUsd } from "../../../src/ai/evaluation/cost-calculator.js"
 import { calculateMetrics } from "../../../src/ai/evaluation/metrics.js";
 import { renderEvaluationMarkdown } from "../../../src/ai/evaluation/report.js";
 import { runEvaluation } from "../../../src/ai/evaluation/runner.js";
-import { loadBenchmarkTasks } from "../../../src/ai/evaluation/task-loader.js";
+import { hashBenchmarkFixture, loadBenchmarkTasks } from "../../../src/ai/evaluation/task-loader.js";
 import type { EvaluationResult, EvaluationRun } from "../../../src/ai/evaluation/types.js";
 
 const temporaryDirectories: string[] = [];
@@ -71,15 +71,26 @@ describe("benchmark evaluation", () => {
   it("runs each model in a fresh workspace from the same fixture commit", async () => {
     const benchmark = await loadBenchmarkTasks(resolve("benchmarks/tasks"));
     const task = benchmark.tasks.find((entry) => entry.id === "inclusive-range")!;
+    const fixtureRoot = await mkdtemp(join(tmpdir(), "verify-benchmark-snapshot-test-"));
+    temporaryDirectories.push(fixtureRoot);
+    const fixturePath = join(fixtureRoot, "fixture");
+    await cp(task.fixturePath, fixturePath, { recursive: true });
+    const snapshotTask = { ...task, fixturePath, fixtureSha256: await hashBenchmarkFixture(fixturePath) };
+    const originalFixtureSource = await readFile(join(fixturePath, "src/range.mjs"), "utf8");
     const workspaces: string[] = [];
     const verificationModels: string[] = [];
     const result = await runEvaluation({
-      benchmark: { ...benchmark, tasks: [task] },
+      benchmark: { ...benchmark, tasks: [snapshotTask] },
       models: ["test/model-a", "test/model-b"]
     }, {
       modelAvailable: async (model) => { verificationModels.push(model); },
       runModelTask: async ({ cwd, model }) => {
         workspaces.push(cwd);
+        if (model === "test/model-a") {
+          await writeFile(join(fixturePath, "src/range.mjs"), "tampered after snapshot\n");
+        } else {
+          await expect(readFile(join(cwd, "src/range.mjs"), "utf8")).resolves.toBe(originalFixtureSource);
+        }
         await writeFile(join(cwd, "src/range.mjs"), "export function isInRange(value, min, max) { return value >= min && value <= max; }\n");
         return {
           status: "verified",

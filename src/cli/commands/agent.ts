@@ -31,15 +31,15 @@ export async function agentCommand(args: string[]): Promise<number> {
   if (!isTaskType(taskTypeOption)) {
     throw new VerifyError("INVALID_ARGUMENTS", "--task-type must be simple, coding, reasoning or security.");
   }
-  const route = modelOption
-    ? { model: modelOption, taskType: taskTypeOption, source: "explicit" as const, reason: "Selected explicitly with --model." }
-    : routeModelForTask(taskTypeOption);
   const format = values.format ?? "terminal";
   if (format !== "terminal" && format !== "json") {
     throw new VerifyError("INVALID_ARGUMENTS", "--format must be terminal or json.");
   }
 
   loadProjectEnv();
+  const route = modelOption
+    ? { model: modelOption, taskType: taskTypeOption, source: "explicit" as const, reason: "Selected explicitly with --model." }
+    : routeModelForTask(taskTypeOption);
   const config = await loadConfig();
   const model = route.model;
   await assertModelAvailable(model);

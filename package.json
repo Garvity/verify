@@ -34,7 +34,7 @@
   "author": "",
   "license": "ISC",
   "engines": {
-    "node": ">=20.6"
+    "node": ">=20.12"
   },
   "devEngines": {
     "packageManager": {

@@ -41,12 +41,17 @@ export async function evalCommand(args: string[]): Promise<number> {
   const pricing = pricingPath ? await loadPriceBook(resolve(pricingPath)) : undefined;
   loadProjectEnv();
 
-  const result = await runEvaluation({ benchmark, models, pricing });
   const requestedOutput = requireStringOption(values.output, "output");
-  let outputBase = requestedOutput ? resolve(requestedOutput) : defaultOutputPath(benchmark.root, result.createdAt);
-  const extension = extname(outputBase).toLowerCase();
-  if (extension === ".json" || extension === ".md") outputBase = outputBase.slice(0, -extension.length);
-  else if (extension) throw new VerifyError("INVALID_ARGUMENTS", "--output must be a path without an extension, or end in .json or .md.");
+  let requestedOutputBase: string | undefined;
+  if (requestedOutput) {
+    requestedOutputBase = resolve(requestedOutput);
+    const extension = extname(requestedOutputBase).toLowerCase();
+    if (extension === ".json" || extension === ".md") requestedOutputBase = requestedOutputBase.slice(0, -extension.length);
+    else if (extension) throw new VerifyError("INVALID_ARGUMENTS", "--output must be a path without an extension, or end in .json or .md.");
+  }
+
+  const result = await runEvaluation({ benchmark, models, pricing });
+  const outputBase = requestedOutputBase ?? defaultOutputPath(benchmark.root, result.createdAt);
 
   const jsonPath = outputBase + ".json";
   const markdownPath = outputBase + ".md";

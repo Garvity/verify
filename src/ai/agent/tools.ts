@@ -15,7 +15,7 @@ const writeInput = z.object({
   path: z.string().min(1).max(2048),
   content: z.string().max(MAX_WRITE_BYTES)
 }).strict();
-const verifyInput = z.object({ base: z.string().min(1).max(256).optional() }).strict();
+const verifyInput = z.object({}).strict();
 
 export const AGENT_TOOLS: ChatCompletionTool[] = [
   {
@@ -51,10 +51,10 @@ export const AGENT_TOOLS: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "verify_changes",
-      description: "Run deterministic verification and enabled quality checks against Git changes.",
+      description: "Run deterministic verification and enabled quality checks against the Git base from the current task.",
       parameters: {
         type: "object",
-        properties: { base: { type: "string", description: "Git base reference, default HEAD" } },
+        properties: {},
         additionalProperties: false
       }
     }
@@ -80,12 +80,19 @@ function isWithin(root: string, target: string): boolean {
 
 function isSensitivePath(relativePath: string): boolean {
   const path = relativePath.replace(/\\/g, "/").toLowerCase();
-  return path === ".env" || path.startsWith(".env/") || path.startsWith(".env.") ||
+  return /(^|\/)\.env[^/]*(?:\/|$)/.test(path) ||
     path === ".git" || path.startsWith(".git/") ||
     path === ".omp" || path.startsWith(".omp/") ||
     path.startsWith("node_modules/") || path.startsWith("dist/") ||
     /(^|\/)(credentials?|secrets?)(\/|\.|$)/.test(path) ||
     /\.(pem|key|p12|pfx)$/i.test(path);
+}
+
+function isTestPath(relativePath: string): boolean {
+  const path = relativePath.replace(/\\/g, "/").toLowerCase();
+  const parts = path.split("/");
+  return parts.some((part) => part === "__tests__" || part === "test" || part === "tests") ||
+    /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(path);
 }
 
 function isVerificationControl(relativePath: string): boolean {
@@ -114,23 +121,26 @@ async function resolveAgentPath(
 
   const relativePath = relative(root, absolutePath).replace(/\\/g, "/");
   if (isSensitivePath(relativePath)) throw new Error("Access to sensitive paths is blocked.");
-  if (forWrite && matchesProtectedPath(relativePath, protectedPaths)) {
-    throw new Error("Writes to configured protected paths are blocked.");
-  }
-  if (forWrite && (!relativePath.startsWith("src/") || isVerificationControl(relativePath))) {
+  if (forWrite && (!relativePath.startsWith("src/") || isTestPath(relativePath) || isVerificationControl(relativePath))) {
     throw new Error("Writes are limited to src/ files outside verification controls.");
   }
 
-  let resolvedPath = absolutePath;
-  try {
-    resolvedPath = await realpath(absolutePath);
-  } catch (error) {
-    if (!forWrite || !(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") {
-      throw error;
+  // Resolve existing parent symlinks even when the requested file does not exist yet.
+  // This prevents a safe-looking src/alias/new-file path from targeting protected files.
+  let unresolved = absolutePath;
+  const suffix: string[] = [];
+  let resolvedPath: string;
+  while (true) {
+    try {
+      resolvedPath = resolve(await realpath(unresolved), ...suffix.reverse());
+      break;
+    } catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+      const parent = resolve(unresolved, "..");
+      if (parent === unresolved) throw error;
+      suffix.push(unresolved.slice(parent.length + 1));
+      unresolved = parent;
     }
-    // The target may be new; its existing parent must remain inside the repository.
-    const realParent = await realpath(resolve(absolutePath, ".."));
-    if (!isWithin(root, realParent)) throw new Error("Path resolves outside the repository.");
   }
 
   if (!isWithin(root, resolvedPath)) throw new Error("Path resolves outside the repository.");
@@ -139,7 +149,7 @@ async function resolveAgentPath(
   if (forWrite && matchesProtectedPath(resolvedRelativePath, protectedPaths)) {
     throw new Error("Writes to configured protected paths are blocked.");
   }
-  if (forWrite && isVerificationControl(resolvedRelativePath)) {
+  if (forWrite && (isTestPath(resolvedRelativePath) || isVerificationControl(resolvedRelativePath))) {
     throw new Error("Writes to verification controls are blocked.");
   }
   return { absolutePath, relativePath };
@@ -197,8 +207,8 @@ export async function executeAgentTool(
         return { ok: true, tool: name, data: { path: input.path, bytesWritten: Buffer.byteLength(input.content) } };
       }
       case "verify_changes": {
-        const input = verifyInput.parse(parsed);
-        const base = input.base ?? context.base;
+        verifyInput.parse(parsed);
+        const base = context.base;
         if (base.startsWith("-") || base.includes("\0")) {
           throw new Error("Invalid Git base reference.");
         }

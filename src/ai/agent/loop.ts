@@ -167,6 +167,11 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
 
       const toolName = call.type === "function" ? call.function.name : "unsupported_tool";
       const toolArguments = call.type === "function" ? call.function.arguments : "{}";
+      if (toolName === "write_file") {
+        // A failed write can still have partially changed a file, so discard old proof first.
+        passedInThisTurn = false;
+        verification = undefined;
+      }
       const toolResult = await executeTool(toolName, toolArguments, {
         cwd,
         base,
@@ -185,10 +190,6 @@ export async function runAgent(options: AgentRunOptions): Promise<AgentRunResult
           stoppedByFailure = true;
           finalMessage = "Verification still has blocking findings after the configured correction limit.";
         }
-      } else if (toolName === "write_file" && toolResult.ok) {
-        // A later write in a batch invalidates a verification result that appeared earlier.
-        passedInThisTurn = false;
-        verification = undefined;
       }
 
       events.push({

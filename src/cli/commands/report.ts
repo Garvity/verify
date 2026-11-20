@@ -36,6 +36,59 @@ const verificationSchema = z.object({
   timestamp: z.string()
 }).passthrough();
 
+const nullableNumberSchema = z.number().nullable();
+const tokenUsageSchema = z.object({
+  inputTokens: nullableNumberSchema,
+  outputTokens: nullableNumberSchema,
+  totalTokens: nullableNumberSchema,
+  cachedInputTokens: nullableNumberSchema,
+  reasoningTokens: nullableNumberSchema
+}).passthrough();
+
+const evaluationRunSchema = z.object({
+  taskId: z.string(),
+  model: z.string(),
+  status: z.enum(["verified", "failed", "unverified", "tool_limit", "error"]),
+  taskCompleted: z.boolean(),
+  verificationPassed: z.boolean(),
+  hiddenTestsPassed: z.boolean().nullable(),
+  hiddenTestDurationMs: z.number(),
+  securityViolationCount: z.number(),
+  regressionCount: z.number(),
+  findingRuleIds: z.array(z.string()),
+  retryCount: z.number(),
+  verificationAttempts: z.number(),
+  latencyMs: z.number(),
+  usage: tokenUsageSchema,
+  costUsd: nullableNumberSchema,
+  pricingAssumption: z.string().optional(),
+  servedModels: z.array(z.string()),
+  providers: z.array(z.string()),
+  baseCommit: z.string(),
+  error: z.string().optional()
+}).passthrough();
+
+const modelMetricsSchema = z.object({
+  model: z.string(),
+  runs: z.number(),
+  completedTasks: z.number(),
+  taskCompletionRate: z.number(),
+  hiddenTestsRun: z.number(),
+  hiddenTestsPassed: z.number(),
+  hiddenTestPassRate: nullableNumberSchema,
+  verificationPassRate: z.number(),
+  securityViolationRate: z.number(),
+  securityViolationCount: z.number(),
+  regressionRate: z.number(),
+  regressionCount: z.number(),
+  averageRetries: z.number(),
+  averageLatencyMs: z.number(),
+  inputTokens: nullableNumberSchema,
+  outputTokens: nullableNumberSchema,
+  costUsd: nullableNumberSchema,
+  costPerPassingTaskUsd: nullableNumberSchema
+}).passthrough();
+
 const evaluationSchema = z.object({
   schemaVersion: z.literal(1),
   id: z.string(),
@@ -43,9 +96,14 @@ const evaluationSchema = z.object({
   benchmarkRoot: z.string(),
   requestedModels: z.array(z.string()),
   environment: z.object({ node: z.string(), platform: z.string(), architecture: z.string() }),
-  taskInputs: z.array(z.unknown()),
-  runs: z.array(z.unknown()),
-  metrics: z.array(z.object({ model: z.string(), taskCompletionRate: z.number() }).passthrough())
+  taskInputs: z.array(z.object({
+    taskId: z.string(),
+    definitionSha256: z.string(),
+    fixtureSha256: z.string(),
+    hiddenTestSha256: z.record(z.string(), z.string())
+  }).passthrough()),
+  runs: z.array(evaluationRunSchema),
+  metrics: z.array(modelMetricsSchema)
 }).passthrough();
 
 const HELP =

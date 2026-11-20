@@ -2,11 +2,12 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { executeAgentTool } from "../../../src/ai/agent/tools.js";
 
 let root = "";
+let outsideRoot = "";
 
 async function createRepo(): Promise<string> {
   root = await mkdtemp(join(tmpdir(), "verify-agent-tools-"));
@@ -18,7 +19,9 @@ async function createRepo(): Promise<string> {
 
 afterEach(async () => {
   if (root) await rm(root, { recursive: true, force: true });
+  if (outsideRoot) await rm(outsideRoot, { recursive: true, force: true });
   root = "";
+  outsideRoot = "";
 });
 
 describe("integrated agent tools", () => {
@@ -55,6 +58,29 @@ describe("integrated agent tools", () => {
     expect(JSON.stringify(secretRead)).not.toContain("do-not-read");
   });
 
+  it("blocks nested environment files and test paths", async () => {
+    const cwd = await createRepo();
+    await mkdir(join(cwd, "src", "config"), { recursive: true });
+    await writeFile(join(cwd, "src", "config", ".env.local"), "TOKEN=private\n");
+    await writeFile(join(cwd, "src", "config", ".envrc"), "TOKEN=private\n");
+
+    const secretRead = await executeAgentTool("read_file", JSON.stringify({ path: "src/config/.env.local" }), { cwd, base: "HEAD" });
+    const envrcRead = await executeAgentTool("read_file", JSON.stringify({ path: "src/config/.envrc" }), { cwd, base: "HEAD" });
+    const testFile = await executeAgentTool("write_file", JSON.stringify({
+      path: "src/sample.test.ts",
+      content: "it('changes behavior', () => {});"
+    }), { cwd, base: "HEAD" });
+    const testsDirectory = await executeAgentTool("write_file", JSON.stringify({
+      path: "src/__tests__/sample.ts",
+      content: "test content"
+    }), { cwd, base: "HEAD" });
+
+    expect(secretRead).toMatchObject({ ok: false });
+    expect(envrcRead).toMatchObject({ ok: false });
+    expect(testFile).toMatchObject({ ok: false });
+    expect(testsDirectory).toMatchObject({ ok: false });
+  });
+
   it("honors project-specific protected path rules", async () => {
     const cwd = await createRepo();
     const result = await executeAgentTool("write_file", JSON.stringify({
@@ -71,7 +97,8 @@ describe("integrated agent tools", () => {
 
   it("blocks symlinks that point outside the repository", async () => {
     const cwd = await createRepo();
-    const outside = join(cwd, "..", "outside-secret.txt");
+    outsideRoot = await mkdtemp(join(tmpdir(), "verify-agent-tools-outside-"));
+    const outside = join(outsideRoot, "outside-secret.txt");
     await writeFile(outside, "private");
     await symlink(outside, join(cwd, "src", "linked.ts"));
 
@@ -82,12 +109,25 @@ describe("integrated agent tools", () => {
 
     expect(result).toMatchObject({ ok: false });
     await expect(readFile(outside, "utf8")).resolves.toBe("private");
-    await rm(outside, { force: true });
+  });
+
+  it("checks the canonical target of new files under symlinked parents", async () => {
+    const cwd = await createRepo();
+    const workflowDirectory = join(cwd, ".github", "workflows");
+    await mkdir(workflowDirectory, { recursive: true });
+    await symlink(workflowDirectory, join(cwd, "src", "alias"));
+
+    const result = await executeAgentTool("write_file", JSON.stringify({
+      path: "src/alias/agent.yml",
+      content: "unsafe workflow"
+    }), { cwd, base: "HEAD" });
+
+    expect(result).toMatchObject({ ok: false });
   });
 
   it("runs verification through the injected deterministic engine", async () => {
     const cwd = await createRepo();
-    const verify = async (base: string) => ({
+    const verify = vi.fn(async (base: string) => ({
       id: "result-1",
       status: "passed" as const,
       findings: [],
@@ -95,14 +135,28 @@ describe("integrated agent tools", () => {
       durationMs: 2,
       timestamp: "2026-01-01T00:00:00.000Z",
       checkBase: base
-    });
+    }));
 
-    const result = await executeAgentTool("verify_changes", JSON.stringify({ base: "main" }), {
+    const result = await executeAgentTool("verify_changes", "{}", {
+      cwd,
+      base: "main",
+      verify
+    });
+    expect(result).toMatchObject({ ok: true, tool: "verify_changes", data: { status: "passed" } });
+    expect(verify).toHaveBeenCalledWith("main");
+  });
+
+  it("does not accept a model-selected Git base", async () => {
+    const cwd = await createRepo();
+    const verify = vi.fn();
+    const result = await executeAgentTool("verify_changes", JSON.stringify({ base: "HEAD~1" }), {
       cwd,
       base: "HEAD",
       verify
     });
-    expect(result).toMatchObject({ ok: true, tool: "verify_changes", data: { status: "passed" } });
+
+    expect(result).toMatchObject({ ok: false });
+    expect(verify).not.toHaveBeenCalled();
   });
 
   it("runs the default verifier in the agent's repository", async () => {

@@ -13,6 +13,7 @@ import { EMPTY_USAGE } from "../gateway/usage.js";
 import { calculateCostUsd } from "./cost-calculator.js";
 import { calculateMetrics } from "./metrics.js";
 import { runModelTask } from "./model-adapter.js";
+import { hashBenchmarkFixture } from "./task-loader.js";
 import type { AgentRunResult } from "../agent/loop.js";
 import type { EvaluationResult, EvaluationRun, LoadedBenchmark, LoadedBenchmarkTask, PriceBook } from "./types.js";
 
@@ -191,8 +192,19 @@ export async function runEvaluation(
   const verify = dependencies.verify ?? runVerification;
   const runs: EvaluationRun[] = [];
   for (const task of options.benchmark.tasks) {
-    for (const model of models) {
-      runs.push(await evaluatePair(task, model, options.pricing, { runModelTask: runModel, verify }));
+    const snapshotParent = await mkdtemp(join(tmpdir(), "verify-eval-fixture-" + task.id + "-"));
+    const snapshotPath = join(snapshotParent, "fixture");
+    try {
+      await cp(task.fixturePath, snapshotPath, { recursive: true, force: false, errorOnExist: true });
+      if (await hashBenchmarkFixture(snapshotPath) !== task.fixtureSha256) {
+        throw new VerifyError("CONFIG_INVALID", `Benchmark fixture '${task.id}' changed after it was loaded.`);
+      }
+      const snapshotTask = { ...task, fixturePath: snapshotPath };
+      for (const model of models) {
+        runs.push(await evaluatePair(snapshotTask, model, options.pricing, { runModelTask: runModel, verify }));
+      }
+    } finally {
+      await rm(snapshotParent, { recursive: true, force: true });
     }
   }
 

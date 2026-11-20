@@ -12,16 +12,62 @@ export interface ScanRouteOptions {
 }
 
 async function readJsonBody(request: IncomingMessage, maxBytes: number): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  let length = 0;
-  for await (const chunk of request) {
-    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    length += buffer.length;
-    if (length > maxBytes) throw new Error("Request body is too large.");
-    chunks.push(buffer);
-  }
-  if (length === 0) return {};
-  return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let length = 0;
+    let settled = false;
+    const cleanup = (): void => {
+      request.off("data", onData);
+      request.off("end", onEnd);
+      request.off("error", onError);
+      request.off("close", onClose);
+    };
+    const onData = (chunk: Buffer | string): void => {
+      if (settled) return;
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      length += buffer.length;
+      if (length > maxBytes) {
+        settled = true;
+        chunks.length = 0;
+        reject(new Error("Request body is too large."));
+        // Keep consuming without retaining bytes so the client receives the 413 response
+        // and the socket is not destroyed by an early async-iterator return.
+        request.once("end", cleanup);
+        return;
+      }
+      chunks.push(buffer);
+    };
+    const onEnd = (): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try {
+        resolve(length === 0 ? {} : JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    const onError = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const onClose = (): void => {
+      if (!settled) {
+        settled = true;
+        cleanup();
+        reject(new Error("Request body ended before the upload completed."));
+      } else {
+        cleanup();
+      }
+    };
+
+    request.on("data", onData);
+    request.on("end", onEnd);
+    request.on("error", onError);
+    request.on("close", onClose);
+  });
 }
 
 export async function handleScanRequest(
@@ -29,6 +75,15 @@ export async function handleScanRequest(
   response: ServerResponse,
   options: ScanRouteOptions
 ): Promise<void> {
+  const contentType = request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase();
+  if (contentType !== "application/json") {
+    response.statusCode = 415;
+    response.setHeader("content-type", "application/json; charset=utf-8");
+    response.end(JSON.stringify({ error: "Content-Type must be application/json." }));
+    request.resume();
+    return;
+  }
+
   let raw: unknown;
   try {
     raw = await readJsonBody(request, options.maxBodyBytes);

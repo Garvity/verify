@@ -1,4 +1,4 @@
-import { Readable, Writable } from "node:stream";
+import { PassThrough, Readable, Writable } from "node:stream";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 
@@ -25,10 +25,11 @@ async function request(
   server: Server,
   method: string,
   url: string,
-  body?: string
+  body?: string,
+  contentType = "application/json"
 ): Promise<TestResponse> {
   const incoming = body === undefined ? Readable.from([]) : Readable.from([Buffer.from(body)]);
-  Object.assign(incoming, { method, url });
+  Object.assign(incoming, { method, url, headers: body === undefined ? {} : { "content-type": contentType } });
   const response = new TestResponse();
   const finished = new Promise<void>((resolve, reject) => {
     response.once("finish", resolve);
@@ -78,6 +79,20 @@ describe("verification HTTP API", () => {
     expect((await request(server, "GET", "/scan")).statusCode).toBe(405);
   });
 
+  it("rejects non-JSON scan requests and malformed request URLs", async () => {
+    const verify = vi.fn().mockResolvedValue(verificationResult);
+    const server = createVerifyHttpServer({ verify });
+    const contentType = await request(server, "POST", "/scan", "{}", "text/plain");
+    const preflight = await request(server, "OPTIONS", "/scan");
+    const malformedUrl = await request(server, "GET", "http://[");
+
+    expect(contentType.statusCode).toBe(415);
+    expect(preflight.statusCode).toBe(405);
+    expect(preflight.headers.has("access-control-allow-origin")).toBe(false);
+    expect(malformedUrl.statusCode).toBe(400);
+    expect(verify).not.toHaveBeenCalled();
+  });
+
   it("limits the request body", async () => {
     const server = createVerifyHttpServer({
       maxBodyBytes: 8,
@@ -86,5 +101,23 @@ describe("verification HTTP API", () => {
     const response = await request(server, "POST", "/scan", JSON.stringify({ base: "HEAD" }));
     expect(response.statusCode).toBe(413);
     expect(JSON.parse(response.body).error).toContain("too large");
+  });
+
+  it("returns 413 as soon as the body limit is crossed and continues draining", async () => {
+    const server = createVerifyHttpServer({ maxBodyBytes: 8 });
+    const incoming = new PassThrough();
+    Object.assign(incoming, { method: "POST", url: "/scan", headers: { "content-type": "application/json" } });
+    const response = new TestResponse();
+    const finished = new Promise<void>((resolve, reject) => {
+      response.once("finish", resolve);
+      response.once("error", reject);
+    });
+    server.emit("request", incoming as IncomingMessage, response as unknown as ServerResponse);
+
+    incoming.write("x".repeat(9));
+    await finished;
+    expect(response.statusCode).toBe(413);
+    incoming.end("remaining body");
+    await new Promise<void>((resolve) => incoming.once("end", resolve));
   });
 });

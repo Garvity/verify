@@ -6,7 +6,7 @@ Verification does not depend on an LLM. The CLI, MCP tools, and local HTTP API w
 
 ## Requirements
 
-- Node.js 20.6 or newer
+- Node.js 20.12 or newer
 - pnpm 12.21.0
 - Git
 
@@ -68,6 +68,8 @@ The command writes JSON and Markdown reports under benchmarks/results/. Provide 
 The API binds to loopback only by default and exposes POST /scan and GET /findings. See docs/HTTP.md.
 
 ## Development checks
+
+The packaged CLI runs on Node.js 20.12 or newer. The current Vitest 5.1 test suite requires Node.js 22.12+, 24.x, or 26+.
 
     pnpm build
     pnpm test

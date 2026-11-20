@@ -21,7 +21,7 @@ Accepts an optional JSON body:
       "runChecks": false
     }
 
-The body is limited to 16 KiB. The response includes the structured verification result. Git base references beginning with a dash are rejected.
+Send the body with `Content-Type: application/json`. Other content types receive HTTP 415. The body is limited to 16 KiB. The response includes the structured verification result. Git base references beginning with a dash are rejected.
 
 ### GET /findings
 

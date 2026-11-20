@@ -5,7 +5,7 @@
       "verify": {
         "type": "local",
         "command": ["pnpm", "--silent", "mcp:dev"],
-        "enabled": true
+        "disabled": false
       }
     }
   }

@@ -56,6 +56,12 @@ const verifyCall = (id: string) => ({
   function: { name: "verify_changes", arguments: "{\"base\":\"HEAD\"}" }
 });
 
+const failedWriteCall = {
+  id: "write-failed",
+  type: "function" as const,
+  function: { name: "write_file", arguments: "{\"path\":\"src/example.ts\",\"content\":\"partial\"}" }
+};
+
 describe("minimal integrated agent loop", () => {
   it("reports verified only after a passing verification and final response", async () => {
     const complete = vi.fn()
@@ -136,6 +142,27 @@ describe("minimal integrated agent loop", () => {
     expect(result.status).toBe("failed");
     expect(result.correctionAttempts).toBe(0);
     expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it("invalidates a passing verification after any write attempt in the same tool batch", async () => {
+    const complete = vi.fn()
+      .mockResolvedValueOnce(response({ content: null, tool_calls: [verifyCall("verify-1"), failedWriteCall] }))
+      .mockResolvedValueOnce(response({ content: "The write failed." }));
+    const executeTool = vi.fn(async (name: string) => name === "verify_changes"
+      ? { ok: true, tool: name, data: verification("passed") }
+      : { ok: false, tool: name, error: "write failed" });
+
+    const result = await runAgent({
+      task: "Check then attempt a fix",
+      model: "test-model",
+      maxRetries: 1,
+      complete,
+      executeTool
+    });
+
+    expect(result.status).toBe("unverified");
+    expect(result.verification).toBeUndefined();
+    expect(complete).toHaveBeenCalledTimes(2);
   });
 
   it("routes direct agent calls by task type and records the decision", async () => {

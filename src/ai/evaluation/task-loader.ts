@@ -75,7 +75,7 @@ async function hashFile(path: string): Promise<string> {
   return createHash("sha256").update(await readFile(path)).digest("hex");
 }
 
-async function hashTree(root: string): Promise<string> {
+export async function hashBenchmarkFixture(root: string): Promise<string> {
   const hash = createHash("sha256");
   const visit = async (directory: string): Promise<void> => {
     for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -168,7 +168,7 @@ export async function loadBenchmarkTasks(taskPath: string): Promise<LoadedBenchm
       fixturePath,
       hiddenTestPaths,
       definitionSha256: await hashFile(actualDefinition),
-      fixtureSha256: await hashTree(fixturePath),
+      fixtureSha256: await hashBenchmarkFixture(fixturePath),
       hiddenTestSha256
     });
   }
