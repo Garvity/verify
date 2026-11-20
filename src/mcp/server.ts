@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
 import type { VerificationResult } from "../core/result.js";
 import { registerGetFindingsTool } from "./tools/get-findings.js";
+import { registerReviewChangesTool } from "./tools/review-changes.js";
 import {
   registerVerifyChangesTool,
   type VerifyChangesInput
@@ -19,6 +20,7 @@ export function createVerifyMcpServer(
   const state: VerificationSessionState = { latestResult: null };
 
   registerVerifyChangesTool(server, runVerification, state);
+  registerReviewChangesTool(server, runVerification, state);
   registerGetFindingsTool(server, state);
 
   return server;

@@ -2,36 +2,33 @@
 
 ## Components
 
-- CLI: parses commands and renders terminal, JSON or Markdown output.
-- Git layer: reads tracked changes and non-ignored untracked files, then parses paths and changed lines.
-- Analyzers: inspect secrets, sensitive paths, risky patterns, deleted tests and structural configuration changes.
-- Quality execution: runs commands from validated configuration through an argv-based runner with time and output limits.
-- Policy engine: applies protected-path rules and blocking behavior.
-- Baseline comparator: classifies findings and check failures as introduced, persistent or resolved.
-- MCP and HTTP adapters: expose the same orchestrator without duplicating verification logic.
-- OpenAI-compatible gateway and agent: optional model requests, restricted file tools, bounded retries and deterministic re-verification.
-- Evaluation runner: copies each task fixture into a separate temporary Git repository, runs explicit models, executes private tests and records results.
+- CLI, MCP stdio server, and loopback HTTP API call a shared verification orchestrator.
+- Git readers collect either the requested change set or an opt-in full scan; deterministic analyzers inspect secrets, sensitive files, risky patterns, deleted tests, dependencies, and infrastructure configuration.
+- The policy engine applies protected-path rules. The quality runner executes explicitly enabled commands through argv allowlists, output limits, and timeouts.
+- The optional AI reviewer receives sanitized changed lines through the reusable OpenAI-compatible gateway. It has no tools and cannot access or edit repository files.
+- The result combines source-tagged deterministic and AI findings, validated evidence, confidence, and AI review status. Deterministic pass/fail status does not depend on provider availability.
+- The evaluation runner uses immutable fixture workspaces and labeled expected findings to compare review models.
 
-## Verification flow
+## Request flow
 
-1. Load and validate .verifyrc.json.
-2. Read the requested Git diff or opt-in full repository scan.
-3. Run configured analyzers.
-4. Execute enabled quality checks when requested.
-5. Apply policy rules and calculate status.
-6. Compare against an optional baseline.
-7. Return one structured VerificationResult to each interface.
+1. Load and validate `.verifyrc.json`.
+2. Read the requested Git diff and run deterministic analyzers.
+3. If requested, run configured quality commands.
+4. If AI review is explicitly requested and the run is not a full-repository scan, redact and send changed lines to the configured reviewer.
+5. Validate the model response against a strict schema and confirm each evidence excerpt maps to a submitted changed line.
+6. Apply deterministic policy, compare any baseline, and return one structured report.
 
-The LLM cannot mark its own changes as passing. Only a passing result from the deterministic orchestrator does so.
+AI failures are captured as review metadata. They do not suppress deterministic findings or change deterministic status. AI findings are always non-blocking.
 
 ## Trust boundaries
 
-- The agent can read repository text except sensitive paths and can write only files under src/ outside verification controls.
-- Verification policy, tests, analyzers, execution configuration and agent code are protected from agent writes.
-- Quality commands are configured by the repository owner and executed without a shell under allowlist, timeout and output limits.
-- Benchmark hidden tests live outside copied workspaces and are invoked as explicit Node test files.
-- The HTTP process binds to loopback by default. It has no authentication layer and should not be exposed remotely.
+- The reviewer receives only changed lines after path-based omission and pattern-based secret redaction. Full scans are not transmitted.
+- The model response is untrusted. Findings must use supported fields and cite exact sanitized excerpts in files and lines that were sent.
+- The reviewer has no file tools, shell, retry loop, or code-writing capability. External coding harnesses own investigation and fixes.
+- Quality commands run on the host under repository configuration. They are executed without a shell and bounded by command allowlists, timeouts, and output limits.
+- The HTTP process binds to loopback by default and has no authentication layer; do not expose it remotely.
+- Pattern-based redaction cannot guarantee detection of every arbitrary credential. Do not treat it as a secure boundary for secrets deliberately embedded in code.
 
-## Caching and context
+## Caching
 
-Only provider model discovery is cached, in memory, for 60 seconds using gateway URL and a one-way API-key fingerprint. Verification and benchmark outcomes are never reused. Context trimming keeps initial instructions, complete tool exchanges and the latest verification result while dropping older complete turns.
+Provider model discovery is cached in memory for 60 seconds using the gateway URL and a one-way API-key fingerprint. Verification, review, and evaluation outcomes are not reused.

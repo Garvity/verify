@@ -9,6 +9,7 @@ export function respondWithFindings(response: ServerResponse, latest: Verificati
     status: latest ? "ok" : "empty",
     findings: latest?.findings ?? [],
     summary: latest?.summary ?? null,
-    verificationStatus: latest?.status ?? null
+    verificationStatus: latest?.status ?? null,
+    aiReview: latest?.aiReview ?? null
   }));
 }

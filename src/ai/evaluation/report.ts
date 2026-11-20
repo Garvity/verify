@@ -1,7 +1,7 @@
 import type { EvaluationResult, ModelMetrics } from "./types.js";
 
-function percent(value: number | null): string {
-  return value === null ? "n/a" : `${(value * 100).toFixed(1)}%`;
+function percent(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 function number(value: number | null): string {
@@ -12,21 +12,42 @@ function dollars(value: number | null): string {
   return value === null ? "n/a" : `$${value.toFixed(6)}`;
 }
 
-export function renderEvaluationMarkdown(result: EvaluationResult): string {
-  const rows = result.metrics.map((metric) => [
+function modelRows(metrics: ModelMetrics[]): string[] {
+  return metrics.map((metric) => `| ${[
     metric.model,
-    `${metric.completedTasks}/${metric.runs} (${percent(metric.taskCompletionRate)})`,
-    metric.hiddenTestsRun === 0 ? "n/a" : `${metric.hiddenTestsPassed}/${metric.hiddenTestsRun} (${percent(metric.hiddenTestPassRate)})`,
-    percent(metric.verificationPassRate),
-    `${metric.securityViolationCount} (${percent(metric.securityViolationRate)})`,
-    `${metric.regressionCount} (${percent(metric.regressionRate)})`,
-    number(metric.averageRetries),
-    `${number(metric.averageLatencyMs)} ms`,
-    dollars(metric.costPerPassingTaskUsd)
-  ]);
+    `${metric.successfulReviews}/${metric.runs} (${percent(metric.reviewSuccessRate)})`,
+    percent(metric.precision),
+    percent(metric.recall),
+    percent(metric.f1),
+    metric.falsePositiveCount,
+    metric.falseNegativeCount,
+    number(metric.averageLatencyMs) + " ms",
+    number(metric.inputTokens) + "/" + number(metric.outputTokens),
+    dollars(metric.costUsd)
+  ].join(" | ")} |`);
+}
 
+function runRow(run: EvaluationResult["runs"][number]): string {
+  const served = run.servedModel ?? "not reported";
+  return `| ${[
+    run.taskId,
+    run.model,
+    run.reviewStatus,
+    `${run.truePositiveCount}/${run.expectedFindingCount}`,
+    run.falsePositiveCount,
+    run.falseNegativeCount,
+    percent(run.precision),
+    percent(run.recall),
+    percent(run.f1),
+    `${run.latencyMs} ms`,
+    `${run.requestedModel} → ${served}`,
+    dollars(run.costUsd)
+  ].join(" | ")} |`;
+}
+
+export function renderEvaluationMarkdown(result: EvaluationResult): string {
   return [
-    "# Verify benchmark comparison",
+    "# Verify AI review benchmark",
     "",
     `- Run ID: \`${result.id}\``,
     `- Created: ${result.createdAt}`,
@@ -34,28 +55,46 @@ export function renderEvaluationMarkdown(result: EvaluationResult): string {
     `- Requested models: ${result.requestedModels.map((model) => `\`${model}\``).join(", ")}`,
     `- Tasks: ${result.taskInputs.map((task) => `\`${task.taskId}\``).join(", ")}`,
     "",
-    "| Model | Task completion | Hidden tests | Verification pass | Security violations | Regressions | Avg retries | Avg latency | Cost per passing task |",
-    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-    ...rows.map((row) => `| ${row.join(" | ")} |`),
+    "## Model comparison",
+    "",
+    "| Requested model | Successful reviews | Precision | Recall | F1 | False positives | Missed findings | Avg latency | Tokens in/out | Total cost |",
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ...modelRows(result.metrics),
     "",
     "## Per-task results",
     "",
-    "| Task | Model | Agent status | Completed | Verification | Hidden tests | Security violations | Regressions | Retries | Latency | Tokens in/out | Cost |",
-    "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-    ...result.runs.map((run) => `| ${run.taskId} | ${run.model} | ${run.status} | ${run.taskCompleted ? "yes" : "no"} | ${run.verificationPassed ? "pass" : "fail"} | ${run.hiddenTestsPassed === null ? "n/a" : run.hiddenTestsPassed ? "pass" : "fail"} | ${run.securityViolationCount} | ${run.regressionCount} | ${run.retryCount} | ${run.latencyMs} ms | ${number(run.usage.inputTokens)}/${number(run.usage.outputTokens)} | ${dollars(run.costUsd)} |`),
+    "| Task | Requested model | Review status | Matched / expected | False positives | Missed findings | Precision | Recall | F1 | Latency | Requested → served | Cost |",
+    "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | ---: |",
+    ...result.runs.map(runRow),
     "",
-    "## Routing metadata",
+    "## Finding scoring",
     "",
-    ...result.runs.map((run) => "- " + run.taskId + " / " + run.model + ": served " + (run.servedModels.join(", ") || "not reported") + "; provider " + (run.providers.join(", ") || "not reported")),
+    "A finding matches a label when the file path and category match and its line is within the task's configured tolerance. Each label and model finding can match at most once. Severity differences are counted separately. Unmatched model findings are false positives; unmatched labels are missed findings. Failed reviews receive no matched findings.",
+    "",
+    "Precision and recall are micro-averaged across each model's runs. When labels exist but a model returns no findings, precision and recall are zero; when there are no labels and no findings, both are one.",
     "",
     "## Reproducibility",
     "",
-    "Task definitions, fixtures and hidden test files are SHA-256 fingerprinted in the JSON result. Each model/task pair ran in a fresh temporary Git repository from the same fixture snapshot. Pricing is reported only when an explicit pricing file supplied rates.",
+    "Every task/model run uses its own isolated copy of the fingerprinted fixture. The evaluator verifies the workspace did not change during review. Task definitions and fixture trees are SHA-256 fingerprinted; the JSON result records the requested and served model, provider, latency, token usage, and cost when explicit prices are configured.",
     "",
     `Result JSON: \`${result.id}.json\``
   ].join("\n");
 }
 
 export function metricsAsMarkdownTable(metrics: ModelMetrics[]): string {
-  return metrics.map((metric) => `${metric.model}: ${percent(metric.taskCompletionRate)} completion, ${percent(metric.verificationPassRate)} verification, ${dollars(metric.costPerPassingTaskUsd)} per passing task`).join("\n");
+  return [
+    "| Model | Reviews passed | Precision | Recall | F1 | False positives | Missed | Avg latency | Cost |",
+    "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ...metrics.map((metric) => `| ${[
+      metric.model,
+      `${metric.successfulReviews}/${metric.runs}`,
+      percent(metric.precision),
+      percent(metric.recall),
+      percent(metric.f1),
+      metric.falsePositiveCount,
+      metric.falseNegativeCount,
+      `${number(metric.averageLatencyMs)} ms`,
+      dollars(metric.costUsd)
+    ].join(" | ")} |`)
+  ].join("\n");
 }

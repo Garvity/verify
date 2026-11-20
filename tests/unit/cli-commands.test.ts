@@ -3,17 +3,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { runVerification, loadBaselineFile, loadProjectEnv, discoverModels } = vi.hoisted(() => ({
+const { runVerification, loadBaselineFile, loadProjectEnv, discoverModels, listReviewModels } = vi.hoisted(() => ({
   runVerification: vi.fn(),
   loadBaselineFile: vi.fn(),
   loadProjectEnv: vi.fn(),
-  discoverModels: vi.fn()
+  discoverModels: vi.fn(),
+  listReviewModels: vi.fn()
 }));
 
 vi.mock("../../src/core/orchestrator.js", () => ({ runVerification }));
 vi.mock("../../src/cli/baseline.js", () => ({ loadBaselineFile }));
 vi.mock("../../src/ai/gateway/env.js", () => ({ loadProjectEnv }));
 vi.mock("../../src/ai/gateway/models.js", () => ({ discoverModels }));
+vi.mock("../../src/ai/review/reviewer.js", () => ({ listReviewModels }));
 
 import { checkCommand } from "../../src/cli/commands/check.js";
 import { initCommand } from "../../src/cli/commands/init.js";
@@ -111,6 +113,12 @@ describe("modelsCommand", () => {
     expect(stdout).toContain("model-without-owner");
     expect(stdout).toContain("owned-model\tvendor");
     expect(loadProjectEnv).toHaveBeenCalledTimes(3);
+
+    listReviewModels.mockResolvedValueOnce([{ id: "review/model" }]);
+    await expect(modelsCommand(["--review", "--format", "json"])).resolves.toBe(0);
+    expect(stdout).toContain('"id": "review/model"');
+    expect(listReviewModels).toHaveBeenCalledTimes(1);
+    expect(loadProjectEnv).toHaveBeenCalledTimes(4);
   });
 });
 

@@ -7,18 +7,19 @@ import { VerifyError } from "../../core/error.js";
 import { loadConfig } from "../../config/loader.js";
 import type { BenchmarkTask, LoadedBenchmark, LoadedBenchmarkTask } from "./types.js";
 
+const expectedFindingSchema = z.object({
+  filePath: z.string().min(1).max(512),
+  line: z.number().int().min(1).max(1_000_000),
+  severity: z.enum(["critical", "high", "medium", "low", "info"]),
+  category: z.enum(["security", "quality", "structural", "policy"])
+}).strict();
+
 const taskSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]{1,63}$/),
   description: z.string().min(1).max(20_000),
-  expectedOutcome: z.string().min(1).max(10_000),
   fixture: z.string().min(1).max(512),
-  hiddenTests: z.array(z.string().min(1).max(512)).max(30).default([]),
-  maxRetries: z.number().int().min(0).max(5).default(2),
-  testTimeoutMs: z.number().int().min(1000).max(120_000).default(30_000),
-  verification: z.object({
-    requirePass: z.boolean().default(true),
-    forbiddenRuleIds: z.array(z.string().min(1)).max(100).default([])
-  }).strict().prefault({})
+  expectedFindings: z.array(expectedFindingSchema).max(100),
+  lineTolerance: z.number().int().min(0).max(10).default(2)
 }).strict();
 
 function isWithin(root: string, target: string): boolean {
@@ -136,6 +137,32 @@ export async function loadBenchmarkTasks(taskPath: string): Promise<LoadedBenchm
     const fixtureInfo = await lstat(fixturePath);
     if (!fixtureInfo.isDirectory()) throw new VerifyError("CONFIG_INVALID", `Task '${task.id}' fixture must be a directory.`);
     await assertFixtureTreeSafe(fixturePath);
+
+    const labels = new Set<string>();
+    for (const label of task.expectedFindings) {
+      const firstPathPart = label.filePath.split("/")[0];
+      if (!firstPathPart) throw new VerifyError("CONFIG_INVALID", `Task '${task.id}' has an invalid expected finding path.`);
+      const expectedPath = await resolveSafePath(
+        fixturePath,
+        label.filePath,
+        `Task '${task.id}' expected finding file`,
+        firstPathPart
+      );
+      if (!(await lstat(expectedPath)).isFile()) {
+        throw new VerifyError("CONFIG_INVALID", `Task '${task.id}' expected finding path must be a file: ${label.filePath}`);
+      }
+      const expectedContents = await readFile(expectedPath, "utf8");
+      const sourceLines = expectedContents.split(/\r?\n/);
+      if (expectedContents.endsWith("\n") || expectedContents.endsWith("\r")) sourceLines.pop();
+      const lineCount = Math.max(1, sourceLines.length);
+      if (label.line > lineCount) {
+        throw new VerifyError("CONFIG_INVALID", `Task '${task.id}' expected finding line is outside '${label.filePath}'.`);
+      }
+      const labelKey = `${label.filePath}:${label.line}:${label.category}`;
+      if (labels.has(labelKey)) throw new VerifyError("CONFIG_INVALID", `Task '${task.id}' repeats an expected finding label at ${labelKey}.`);
+      labels.add(labelKey);
+    }
+
     try {
       await lstat(resolve(fixturePath, ".verifyrc.json"));
     } catch (error) {
@@ -149,27 +176,15 @@ export async function loadBenchmarkTasks(taskPath: string): Promise<LoadedBenchm
       throw new VerifyError("CONFIG_INVALID", "Benchmark fixtures must keep all security analyzers enabled.");
     }
     if ([config.quality.tests, config.quality.lint, config.quality.typecheck].some((check) => check.enabled)) {
-      throw new VerifyError("CONFIG_INVALID", "Benchmark fixtures must disable project commands; the runner executes only validated hidden Node tests.");
-    }
-
-    const hiddenTestPaths: string[] = [];
-    const hiddenTestSha256: Record<string, string> = {};
-    for (const hiddenPath of task.hiddenTests) {
-      if (!hiddenPath.endsWith(".mjs")) throw new VerifyError("CONFIG_INVALID", "Hidden tests must be Node.js .mjs files.");
-      const absolute = await resolveSafePath(resolvedRoot, hiddenPath, `Task '${task.id}' hidden test`, "hidden-tests");
-      if (!(await lstat(absolute)).isFile()) throw new VerifyError("CONFIG_INVALID", `Hidden test is not a file: ${hiddenPath}`);
-      hiddenTestPaths.push(absolute);
-      hiddenTestSha256[hiddenPath] = await hashFile(absolute);
+      throw new VerifyError("CONFIG_INVALID", "Benchmark fixtures must disable project quality commands; evaluation runs read-only reviews.");
     }
 
     tasks.push({
       ...task,
       definitionPath: actualDefinition,
       fixturePath,
-      hiddenTestPaths,
       definitionSha256: await hashFile(actualDefinition),
-      fixtureSha256: await hashBenchmarkFixture(fixturePath),
-      hiddenTestSha256
+      fixtureSha256: await hashBenchmarkFixture(fixturePath)
     });
   }
 

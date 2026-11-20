@@ -11,11 +11,11 @@ MCP changes should also pass pnpm test:mcp. Provider credentials are optional an
 
 ## Make changes
 
-- Keep verification deterministic and independent from model responses.
-- Keep tool access narrow; never add arbitrary shell execution to the integrated agent.
+- Keep deterministic verification independent from model responses; provider failures must not change deterministic status.
+- Keep the reviewer read-only. External coding harnesses own investigation, edits, and re-verification requests.
 - Add regression coverage for fixes and targeted adversarial cases for security boundaries.
-- For benchmark tasks, isolate fixtures, keep hidden tests outside the model workspace, and record SHA-256 input fingerprints.
-- Use conventional commits. Changes that complete a roadmap phase should use a phase-scoped message such as feat(phase 8): add evaluation reports.
+- For benchmark tasks, use immutable labeled fixtures and record SHA-256 input fingerprints.
+- Use clear conventional commits that describe the delivered change without roadmap labels or claims that overstate validation.
 
 ## Validate a change
 

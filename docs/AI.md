@@ -1,41 +1,52 @@
-# FreeLLMAPI and the integrated agent
+# Independent AI code review
 
-The CLI and deterministic verifier work without a model provider. AI commands use FreeLLMAPI's OpenAI-compatible local endpoint and load credentials only when explicitly run. See the [FreeLLMAPI setup guide](https://github.com/valorisa/FreeLLMAPI) to install the router and create a unified key.
+Verify's AI reviewer is an optional, read-only second layer over deterministic verification. It sends a bounded, sanitized representation of changed lines to FreeLLMAPI and returns structured findings with confidence and evidence. The external coding harness remains responsible for investigating and fixing findings, then requesting another verification run.
 
-## Configure the gateway
+## Configure
 
-1. Start FreeLLMAPI and copy its unified API key from the dashboard.
-2. Set `VERIFY_LLM_BASE_URL` to `http://localhost:3001/v1` and `VERIFY_LLM_API_KEY` to that unified key. If FreeLLMAPI listens on a different host or port, use its reachable `/v1` URL.
-3. Set `VERIFY_MODEL=auto` to let FreeLLMAPI choose a usable model and fail over through its configured chain. You can also discover pinned model IDs with:
+Copy `.env.example` to `.env` and set a dedicated review key. The other settings have defaults:
 
-   ```sh
-   pnpm dev models --format json
-   ```
-
-4. Run the connection, usage, served-model metadata and function-calling check:
-
-   ```sh
-   pnpm gateway:check
-   ```
-
-The `auto` model is a virtual routing alias and may not appear in the model catalog. The gateway check allows that alias, then sends a small completion request and a separate forced function-calling probe. The result reports the model that actually served the request. FreeLLMAPI handles upstream fallback; if all configured providers are exhausted, check its dashboard and fallback chain.
-
-Never paste an API key into source code or commit `.env`. The repository ignores `.env`.
-
-## Run the integrated agent
-
-```sh
-pnpm dev agent --task "Describe the coding change" --base HEAD
+```dotenv
+VERIFY_REVIEW_API_KEY=your-FreeLLMAPI-unified-key
+VERIFY_REVIEW_BASE_URL=http://localhost:3001/v1
+VERIFY_REVIEW_MODEL=auto
+VERIFY_REVIEW_TIMEOUT_MS=60000
 ```
 
-Use `--format json` for structured output or `--model <id>` to select another ID returned by FreeLLMAPI. The agent reads repository files, writes source files under `src/` outside verification controls, and invokes deterministic verification with configured quality checks. It cannot edit policy/configuration, analyzers, tests, Git analysis, execution controls or its own agent/gateway implementation. `agent.maxRetries` in `.verifyrc.json` bounds correction attempts.
+The key is separate from `VERIFY_LLM_API_KEY`. Review uses the same reusable OpenAI-compatible client and default FreeLLMAPI endpoint, but does not fall back to another credential. The reviewer makes one completion request with automatic SDK retries disabled.
 
-The result includes the verification result, model routing metadata when exposed, token usage, and a structured event log. Exit code `0` means verification passed, `1` means blocking findings remain, and `3` means the agent stopped without a verified result or encountered an execution error.
+Use `pnpm dev models --review` to list model IDs exposed to the dedicated review gateway. The `auto` routing alias is configured for review by default and may not appear in the provider's catalog.
 
-### Context and task routing
+## Run a review
 
-The agent keeps its system instructions and original task, drops older complete tool turns when the estimated prompt exceeds the configured budget, and pins the most recent verification result. Set `VERIFY_CONTEXT_MAX_TOKENS` to adjust the default 12,000-token budget. Each model response records the estimated context size and number of dropped messages.
+```sh
+pnpm dev review --base main
+pnpm dev review --base main --checks --format json
+```
 
-For transparent task-aware selection, set any of `VERIFY_MODEL_SIMPLE`, `VERIFY_MODEL_CODING`, `VERIFY_MODEL_REASONING`, or `VERIFY_MODEL_SECURITY`. Use `--task-type` to select one when running the agent. An explicit `--model` takes precedence; otherwise the selected task model is used, with `VERIFY_MODEL` as the recorded fallback. Evaluation runs always use their explicit model IDs and bypass routing.
+`review` returns the deterministic findings and the AI review findings in one report. `scan` and `check` remain deterministic by default and require no model provider. CLI exit status reflects deterministic verification; review status and any AI failure appear separately in `aiReview` metadata.
 
-FreeLLMAPI model discovery is cached in memory for 60 seconds. The cache key includes the gateway URL and a one-way fingerprint of the API key; no verification or benchmark result is reused.
+Baseline comparison continues to classify deterministic findings; AI suggestions are reported separately because model output can vary between runs.
+
+## MCP and HTTP
+
+- MCP `verify_changes` performs deterministic verification by default. Pass `aiReview: true` to opt into the combined report.
+- MCP `review_changes` explicitly requests the combined report.
+- MCP `get_findings` can filter on `source: "deterministic"` or `source: "ai"`.
+- HTTP `POST /scan` accepts `"aiReview": true` for the same opt-in combined report.
+
+All these paths use the same orchestrator. AI provider failures do not discard deterministic findings or change deterministic pass/fail status.
+
+## Data handling and validation
+
+The model receives only changed lines, not repository-wide context. Before transmission, Verify omits sensitive paths such as environment files, private keys, credential files, and SSH material, then redacts common API key, token, password, bearer, JWT, provider-specific, and key-material patterns from added and removed lines. Requests are size bounded. `--all` full-repository scans are not sent to the reviewer.
+
+The reviewer has no file-reading or file-writing tools. Its strict JSON response must contain bounded fields, valid severity/category/confidence, and evidence that matches a sanitized changed file and line. A finding's evidence is checked against what was sent. AI findings are always non-blocking; they cannot claim that deterministic checks passed or approve a change.
+
+Provider errors and malformed or unsupported output return a generic status code such as `provider_error` or `invalid_response`. Raw provider errors, keys, and unvalidated model output are not copied into reports.
+
+Pattern-based secret redaction cannot identify every arbitrary credential. Do not treat the reviewer as a secret-scanning boundary or send changes that should not leave the machine. Deterministic checks remain available without the AI settings.
+
+## Reusable gateway and evaluation
+
+The OpenAI-compatible gateway, model discovery, usage accounting, and multi-model evaluation tools remain available. Evaluation uses the dedicated reviewer configuration and scores model findings against labeled review fixtures. See [evaluation methodology](EVALUATION.md).

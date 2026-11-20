@@ -20,7 +20,8 @@ describe("CLI command dispatch", () => {
     await expect(runCli(["--help"])).resolves.toBe(0);
     expect(stdout).toContain("verify <command>");
     expect(stdout).toContain("models");
-    expect(stdout).toContain("agent");
+    expect(stdout).toContain("review");
+    expect(stdout).not.toContain("agent");
   });
 
   it("returns the documented invalid-arguments exit code", async () => {
@@ -45,8 +46,8 @@ describe("CLI command dispatch", () => {
     expect(stdout).toContain("--models <model-a,model-b");
   });
 
-  it("documents task routing on the agent command", async () => {
-    await expect(runCli(["agent", "--help"])).resolves.toBe(0);
-    expect(stdout).toContain("--task-type <simple|coding|reasoning|security>");
+  it("documents the read-only AI review command", async () => {
+    await expect(runCli(["review", "--help"])).resolves.toBe(0);
+    expect(stdout).toContain("read-only AI reviewer");
   });
 });

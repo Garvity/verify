@@ -48,45 +48,51 @@ const tokenUsageSchema = z.object({
 const evaluationRunSchema = z.object({
   taskId: z.string(),
   model: z.string(),
-  status: z.enum(["verified", "failed", "unverified", "tool_limit", "error"]),
-  taskCompleted: z.boolean(),
-  verificationPassed: z.boolean(),
-  hiddenTestsPassed: z.boolean().nullable(),
-  hiddenTestDurationMs: z.number(),
-  securityViolationCount: z.number(),
-  regressionCount: z.number(),
-  findingRuleIds: z.array(z.string()),
-  retryCount: z.number(),
-  verificationAttempts: z.number(),
+  reviewStatus: z.enum(["completed", "unavailable", "failed", "skipped"]),
+  review: z.object({
+    status: z.enum(["completed", "unavailable", "failed", "skipped"]),
+    model: z.string().optional(),
+    servedModel: z.string().optional(),
+    provider: z.string().optional(),
+    errorCode: z.string().optional(),
+    durationMs: z.number()
+  }).passthrough(),
+  findings: z.array(findingSchema),
+  expectedFindingCount: z.number(),
+  truePositiveCount: z.number(),
+  falsePositiveCount: z.number(),
+  falseNegativeCount: z.number(),
+  severityMismatchCount: z.number(),
+  precision: z.number(),
+  recall: z.number(),
+  f1: z.number(),
   latencyMs: z.number(),
   usage: tokenUsageSchema,
   costUsd: nullableNumberSchema,
   pricingAssumption: z.string().optional(),
-  servedModels: z.array(z.string()),
-  providers: z.array(z.string()),
-  baseCommit: z.string(),
-  error: z.string().optional()
+  requestedModel: z.string(),
+  servedModel: z.string().optional(),
+  provider: z.string().optional(),
+  failureReason: z.string().optional()
 }).passthrough();
 
 const modelMetricsSchema = z.object({
   model: z.string(),
   runs: z.number(),
-  completedTasks: z.number(),
-  taskCompletionRate: z.number(),
-  hiddenTestsRun: z.number(),
-  hiddenTestsPassed: z.number(),
-  hiddenTestPassRate: nullableNumberSchema,
-  verificationPassRate: z.number(),
-  securityViolationRate: z.number(),
-  securityViolationCount: z.number(),
-  regressionRate: z.number(),
-  regressionCount: z.number(),
-  averageRetries: z.number(),
+  successfulReviews: z.number(),
+  reviewSuccessRate: z.number(),
+  expectedFindingCount: z.number(),
+  truePositiveCount: z.number(),
+  falsePositiveCount: z.number(),
+  falseNegativeCount: z.number(),
+  severityMismatchCount: z.number(),
+  precision: z.number(),
+  recall: z.number(),
+  f1: z.number(),
   averageLatencyMs: z.number(),
   inputTokens: nullableNumberSchema,
   outputTokens: nullableNumberSchema,
-  costUsd: nullableNumberSchema,
-  costPerPassingTaskUsd: nullableNumberSchema
+  costUsd: nullableNumberSchema
 }).passthrough();
 
 const evaluationSchema = z.object({
@@ -99,8 +105,7 @@ const evaluationSchema = z.object({
   taskInputs: z.array(z.object({
     taskId: z.string(),
     definitionSha256: z.string(),
-    fixtureSha256: z.string(),
-    hiddenTestSha256: z.record(z.string(), z.string())
+    fixtureSha256: z.string()
   }).passthrough()),
   runs: z.array(evaluationRunSchema),
   metrics: z.array(modelMetricsSchema)

@@ -60,6 +60,7 @@ describe("verification HTTP API", () => {
       base: "HEAD",
       all: false,
       runChecks: false,
+      aiReview: false,
       cwd: "/tmp/project"
     });
 
@@ -68,6 +69,20 @@ describe("verification HTTP API", () => {
       status: "ok",
       findings: [],
       verificationStatus: "passed"
+    });
+  });
+
+  it("passes an explicit AI review request to the shared verifier", async () => {
+    const verify = vi.fn().mockResolvedValue(verificationResult);
+    const server = createVerifyHttpServer({ cwd: "/tmp/project", verify });
+    const scan = await request(server, "POST", "/scan", JSON.stringify({ aiReview: true }));
+    expect(scan.statusCode).toBe(200);
+    expect(verify).toHaveBeenCalledWith({
+      base: undefined,
+      all: false,
+      runChecks: false,
+      aiReview: true,
+      cwd: "/tmp/project"
     });
   });
 

@@ -5,16 +5,14 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { performance } from "node:perf_hooks";
 
+import type { AIReviewSummary } from "../../core/result.js";
+import { readWorkingTreeFiles } from "../../git/full-scan-reader.js";
 import { VerifyError } from "../../core/error.js";
-import { runVerification } from "../../core/orchestrator.js";
-import { runCommand } from "../../execution/command-runner.js";
-import { assertModelAvailable } from "../gateway/models.js";
+import { reviewChanges, type ReviewChangesResult } from "../review/reviewer.js";
 import { EMPTY_USAGE } from "../gateway/usage.js";
 import { calculateCostUsd } from "./cost-calculator.js";
-import { calculateMetrics } from "./metrics.js";
-import { runModelTask } from "./model-adapter.js";
+import { calculateMetrics, scoreFindings } from "./metrics.js";
 import { hashBenchmarkFixture } from "./task-loader.js";
-import type { AgentRunResult } from "../agent/loop.js";
 import type { EvaluationResult, EvaluationRun, LoadedBenchmark, LoadedBenchmarkTask, PriceBook } from "./types.js";
 
 export interface RunEvaluationOptions {
@@ -24,155 +22,126 @@ export interface RunEvaluationOptions {
 }
 
 export interface EvaluationDependencies {
-  modelAvailable?: (model: string) => Promise<void>;
-  runModelTask?: (input: { task: LoadedBenchmarkTask; model: string; cwd: string }) => Promise<AgentRunResult>;
-  verify?: typeof runVerification;
+  reviewChanges?: typeof reviewChanges;
   now?: () => Date;
 }
 
-function redact(value: string): string {
-  return value.replace(/sk-or-v1-[A-Za-z0-9_-]+/g, "[REDACTED]").slice(0, 1000);
+function runGit(args: string[], cwd: string): void {
+  execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
-function runGit(args: string[], cwd: string, env: NodeJS.ProcessEnv = process.env): string {
-  return execFileSync("git", args, { cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
-}
-
-async function createWorkspace(task: LoadedBenchmarkTask): Promise<{ parent: string; cwd: string; baseCommit: string }> {
+async function createWorkspace(task: LoadedBenchmarkTask): Promise<{ parent: string; cwd: string }> {
   const parent = await mkdtemp(join(tmpdir(), "verify-eval-" + task.id + "-"));
   const cwd = join(parent, "workspace");
   try {
     await cp(task.fixturePath, cwd, { recursive: true, force: false, errorOnExist: true });
     runGit(["init", "-q"], cwd);
     runGit(["add", "-A"], cwd);
-    runGit([
-      "-c", "user.name=Verify Benchmark",
-      "-c", "user.email=benchmark@example.invalid",
-      "commit", "-q", "--allow-empty", "-m", "benchmark base: " + task.id
-    ], cwd, {
-      ...process.env,
-      GIT_AUTHOR_DATE: "2000-01-01T00:00:00Z",
-      GIT_COMMITTER_DATE: "2000-01-01T00:00:00Z"
-    });
-    return { parent, cwd, baseCommit: runGit(["rev-parse", "HEAD"], cwd) };
+    return { parent, cwd };
   } catch (error) {
     await rm(parent, { recursive: true, force: true });
     throw error;
   }
 }
 
-async function runHiddenTests(task: LoadedBenchmarkTask, cwd: string): Promise<{ passed: boolean | null; durationMs: number }> {
-  if (task.hiddenTestPaths.length === 0) return { passed: null, durationMs: 0 };
-  const result = await runCommand({
-    command: process.execPath,
-    args: ["--test", ...task.hiddenTestPaths],
-    cwd,
-    allowedCommands: [process.execPath],
-    timeoutMs: task.testTimeoutMs,
-    maxOutputBytes: 1024 * 1024
-  });
+function emptyReview(model: string, durationMs: number, status: AIReviewSummary["status"] = "failed"): AIReviewSummary {
+  return { status, model, durationMs };
+}
+
+function evaluationErrorRun(
+  task: LoadedBenchmarkTask,
+  model: string,
+  review: AIReviewSummary,
+  pricing: PriceBook | undefined,
+  failureReason: string
+): EvaluationRun {
+  const score = scoreFindings(task.expectedFindings, [], task.lineTolerance);
+  const usage = EMPTY_USAGE;
+  const price = pricing?.[model];
   return {
-    passed: result.exitCode === 0 && !result.timedOut,
-    durationMs: result.durationMs
+    taskId: task.id,
+    model,
+    reviewStatus: review.status,
+    review,
+    findings: [],
+    expectedFindingCount: task.expectedFindings.length,
+    ...score,
+    latencyMs: review.durationMs,
+    usage,
+    costUsd: calculateCostUsd(usage, price),
+    ...(price ? { pricingAssumption: price.assumption } : {}),
+    requestedModel: model,
+    ...(review.servedModel ? { servedModel: review.servedModel } : {}),
+    ...(review.provider ? { provider: review.provider } : {}),
+    failureReason
   };
-}
-
-function observationStrings(agent: AgentRunResult | undefined, key: "servedModel" | "provider"): string[] {
-  const values = agent?.events.flatMap((event) => event.model?.[key] ? [event.model[key]!] : []) ?? [];
-  return [...new Set(values)].sort();
-}
-
-function getRegressionCount(result: Awaited<ReturnType<typeof runVerification>> | undefined): number {
-  if (!result?.baselineComparison) return 0;
-  return result.baselineComparison.findings.introduced.length +
-    (result.baselineComparison.checkFailures?.introduced.length ?? 0);
 }
 
 async function evaluatePair(
   task: LoadedBenchmarkTask,
   model: string,
   pricing: PriceBook | undefined,
-  dependencies: Required<Pick<EvaluationDependencies, "runModelTask" | "verify">>
+  review: EvaluationDependencies["reviewChanges"]
 ): Promise<EvaluationRun> {
   const started = performance.now();
-  const workspace = await createWorkspace(task);
-  let agent: AgentRunResult | undefined;
-  let agentError: string | undefined;
-  let finalVerification: Awaited<ReturnType<typeof runVerification>> | undefined;
-  let hidden: { passed: boolean | null; durationMs: number } = { passed: task.hiddenTestPaths.length === 0 ? null : false, durationMs: 0 };
+  let workspace: { parent: string; cwd: string } | undefined;
   try {
-    const baseline = await dependencies.verify({ all: true, cwd: workspace.cwd });
-    try {
-      agent = await dependencies.runModelTask({ task, model, cwd: workspace.cwd });
-    } catch (error) {
-      agentError = redact(error instanceof Error ? error.message : String(error));
-    }
-    finalVerification = await dependencies.verify({
-      all: true,
-      baseline: { findings: baseline.findings },
-      cwd: workspace.cwd
-    });
-    try {
-      hidden = await runHiddenTests(task, workspace.cwd);
-    } catch (error) {
-      agentError ??= redact(error instanceof Error ? error.message : String(error));
+    workspace = await createWorkspace(task);
+    const beforeHash = await hashBenchmarkFixture(workspace.cwd);
+    const files = await readWorkingTreeFiles(workspace.cwd);
+    if (files.length === 0) {
+      throw new VerifyError("CONFIG_INVALID", `Benchmark task '${task.id}' has no reviewable files.`);
     }
 
-    const finalRuleIds = [...new Set(finalVerification.findings.map((finding) => finding.ruleId))].sort();
-    const forbiddenFound = task.verification.forbiddenRuleIds.some((ruleId) => finalRuleIds.includes(ruleId));
-    const verificationPassed = finalVerification.status === "passed" && !forbiddenFound;
-    const status = agent?.status ?? "error";
-    const taskCompleted = status === "verified" && hidden.passed !== false &&
-      (!task.verification.requirePass || verificationPassed);
-    const usage = agent?.usage ?? EMPTY_USAGE;
+    let response: ReviewChangesResult;
+    try {
+      response = await (review ?? reviewChanges)(files, { cwd: workspace.cwd, model });
+    } finally {
+      const afterHash = await hashBenchmarkFixture(workspace.cwd);
+      if (afterHash !== beforeHash) {
+        throw new Error("Reviewer modified the immutable benchmark fixture.");
+      }
+    }
+
+    const reviewSummary = response.review;
+    const isSuccessful = reviewSummary.status === "completed";
+    const findings = isSuccessful ? response.findings : [];
+    const score = scoreFindings(task.expectedFindings, findings, task.lineTolerance);
+    const usage = isSuccessful ? response.usage : EMPTY_USAGE;
     const price = pricing?.[model];
+    const latencyMs = reviewSummary.durationMs || Math.max(0, Math.round(performance.now() - started));
 
     return {
       taskId: task.id,
       model,
-      status,
-      taskCompleted,
-      verificationPassed,
-      hiddenTestsPassed: hidden.passed,
-      hiddenTestDurationMs: hidden.durationMs,
-      securityViolationCount: finalVerification.findings.filter((finding) => finding.category === "security").length,
-      regressionCount: getRegressionCount(finalVerification),
-      findingRuleIds: finalRuleIds,
-      retryCount: agent?.correctionAttempts ?? 0,
-      verificationAttempts: agent?.verificationAttempts ?? 0,
-      latencyMs: Math.max(0, Math.round(performance.now() - started)),
+      reviewStatus: reviewSummary.status,
+      review: reviewSummary,
+      findings,
+      expectedFindingCount: task.expectedFindings.length,
+      ...score,
+      latencyMs,
       usage,
       costUsd: calculateCostUsd(usage, price),
       ...(price ? { pricingAssumption: price.assumption } : {}),
-      servedModels: observationStrings(agent, "servedModel"),
-      providers: observationStrings(agent, "provider"),
-      baseCommit: workspace.baseCommit,
-      ...(agentError ? { error: agentError } : {})
+      requestedModel: model,
+      ...(reviewSummary.servedModel ? { servedModel: reviewSummary.servedModel } : {}),
+      ...(reviewSummary.provider ? { provider: reviewSummary.provider } : {}),
+      ...(!isSuccessful ? { failureReason: reviewSummary.errorCode ?? reviewSummary.status } : {})
     };
   } catch (error) {
-    return {
-      taskId: task.id,
+    const elapsed = Math.max(0, Math.round(performance.now() - started));
+    const reviewSummary = emptyReview(model, elapsed, "failed");
+    return evaluationErrorRun(
+      task,
       model,
-      status: "error",
-      taskCompleted: false,
-      verificationPassed: false,
-      hiddenTestsPassed: hidden.passed,
-      hiddenTestDurationMs: hidden.durationMs,
-      securityViolationCount: 0,
-      regressionCount: 0,
-      findingRuleIds: [],
-      retryCount: agent?.correctionAttempts ?? 0,
-      verificationAttempts: agent?.verificationAttempts ?? 0,
-      latencyMs: Math.max(0, Math.round(performance.now() - started)),
-      usage: agent?.usage ?? EMPTY_USAGE,
-      costUsd: calculateCostUsd(agent?.usage ?? EMPTY_USAGE, pricing?.[model]),
-      servedModels: observationStrings(agent, "servedModel"),
-      providers: observationStrings(agent, "provider"),
-      baseCommit: workspace.baseCommit,
-      error: redact(error instanceof Error ? error.message : String(error))
-    };
+      reviewSummary,
+      pricing,
+      error instanceof Error && error.message.includes("modified the immutable")
+        ? "fixture_modified"
+        : "review_error"
+    );
   } finally {
-    await rm(workspace.parent, { recursive: true, force: true });
+    if (workspace) await rm(workspace.parent, { recursive: true, force: true });
   }
 }
 
@@ -185,11 +154,6 @@ export async function runEvaluation(
   if (models.length > 3) throw new VerifyError("INVALID_ARGUMENTS", "Evaluation supports at most three models per run.");
   if (options.benchmark.tasks.length === 0) throw new VerifyError("CONFIG_INVALID", "Evaluation benchmark has no tasks.");
 
-  const modelAvailable = dependencies.modelAvailable ?? assertModelAvailable;
-  for (const model of models) await modelAvailable(model);
-
-  const runModel = dependencies.runModelTask ?? runModelTask;
-  const verify = dependencies.verify ?? runVerification;
   const runs: EvaluationRun[] = [];
   for (const task of options.benchmark.tasks) {
     const snapshotParent = await mkdtemp(join(tmpdir(), "verify-eval-fixture-" + task.id + "-"));
@@ -201,7 +165,7 @@ export async function runEvaluation(
       }
       const snapshotTask = { ...task, fixturePath: snapshotPath };
       for (const model of models) {
-        runs.push(await evaluatePair(snapshotTask, model, options.pricing, { runModelTask: runModel, verify }));
+        runs.push(await evaluatePair(snapshotTask, model, options.pricing, dependencies.reviewChanges));
       }
     } finally {
       await rm(snapshotParent, { recursive: true, force: true });
@@ -224,8 +188,7 @@ export async function runEvaluation(
     taskInputs: options.benchmark.tasks.map((task) => ({
       taskId: task.id,
       definitionSha256: task.definitionSha256,
-      fixtureSha256: task.fixtureSha256,
-      hiddenTestSha256: task.hiddenTestSha256
+      fixtureSha256: task.fixtureSha256
     })),
     runs,
     metrics: calculateMetrics(runs, models)

@@ -1,6 +1,6 @@
 # MCP integration
 
-`verify` exposes the deterministic verification engine over the Model Context Protocol (MCP). The server uses stdio, so it does not open a network port and does not need an LLM gateway.
+`verify` exposes deterministic verification and the optional read-only AI reviewer over the Model Context Protocol (MCP). The server uses stdio, so it does not open a network port. Deterministic verification needs no LLM gateway or API key; AI review uses the dedicated `VERIFY_REVIEW_*` settings.
 
 ## Start the server
 
@@ -38,9 +38,9 @@ Codex desktop shares MCP configuration with Codex CLI and the IDE extension. You
    `--silent` keeps pnpm's command banner off stdout, where it would interfere with MCP messages.
 5. Save the server and select **Restart**.
 6. In the composer, enter `/mcp` and confirm `verify` is listed.
-7. Call `verify_changes` with `base: "HEAD"`, then call `get_findings` to confirm both tools return structured output.
+7. Call `verify_changes` with `base: "HEAD"`, then `get_findings` to confirm deterministic results. To request a combined report, call `review_changes` or call `verify_changes` with `aiReview: true`.
 
-No API key or OAuth sign-in is needed. For another machine or checkout, replace the project path with that checkout's absolute path.
+No API key or OAuth sign-in is needed for deterministic verification. AI review requires `VERIFY_REVIEW_API_KEY` in the MCP process environment or project `.env`. For another machine or checkout, replace the project path with that checkout's absolute path.
 
 Codex can also read this equivalent user-level configuration from `~/.codex/config.toml`:
 
@@ -55,7 +55,7 @@ enabled = true
 
 ### OpenCode
 
-The repository includes an OpenCode MCP configuration in `opencode.json`. Start OpenCode from the repository root with `opencode`, then use `/mcps` to confirm `verify` is connected and exposes `verify_changes` and `get_findings`. Select an active model with tool-calling support, then ask OpenCode to call `verify_changes` with `base: "HEAD"` to check the full client-to-server path.
+The repository includes an OpenCode MCP configuration in `opencode.json`. Start OpenCode from the repository root with `opencode`, then use `/mcps` to confirm `verify` is connected and exposes `verify_changes`, `review_changes`, and `get_findings`. Select an active model with tool-calling support, then ask OpenCode to call `verify_changes` with `base: "HEAD"`. Call `review_changes` when you want the combined report.
 
 The server starts with `pnpm --silent mcp:dev`. The `--silent` flag keeps pnpm's startup text off stdout, which is reserved for MCP messages.
 
@@ -80,11 +80,15 @@ Restart the client after changing its MCP configuration.
 
 ### `verify_changes`
 
-Runs verification against the current Git changes. It accepts an optional `base` Git reference and returns a structured result containing status, findings and summary counts. The result is produced by the same `runVerification` function used by the CLI.
+Runs deterministic verification against current Git changes. It accepts `base` and optional `aiReview: true`. AI review is not requested by default. The returned result is produced by the same orchestrator used by the CLI.
+
+### `review_changes`
+
+Runs deterministic verification and explicitly requests the read-only AI reviewer. It returns both finding sources, evidence, AI confidence, and `aiReview` status. AI failures are included in the result and do not change deterministic status.
 
 ### `get_findings`
 
-Returns the findings from the most recent successful `verify_changes` call in this server process. Optional filters are `blockingOnly` and `severity` (`critical`, `high`, `medium`, `low` or `info`).
+Returns the findings from the most recent verification or review call in this server process. Optional filters are `blockingOnly`, `severity` (`critical`, `high`, `medium`, `low` or `info`), and `source` (`deterministic` or `ai`). The result includes AI review status when review was requested.
 
 ## Local MCP protocol check
 
@@ -94,4 +98,4 @@ The repository includes an in-memory MCP client/server integration test. Run it 
 pnpm test:mcp
 ```
 
-For a client-level check, start `pnpm mcp:dev` through an MCP inspector or an existing coding agent and confirm that it lists both tools, calls `verify_changes`, and receives structured findings. No model provider credentials are needed for these tools.
+For a client-level check, start `pnpm mcp:dev` through an MCP inspector or a coding harness and confirm that it lists all three tools and returns structured findings. No model credentials are needed for `verify_changes`; `review_changes` needs the dedicated review key.

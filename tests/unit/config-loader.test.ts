@@ -28,16 +28,12 @@ describe("loadConfig", () => {
 
       await writeFile(
         configPath,
-        JSON.stringify({
-          agent: {
-            maxRetries: 5
-          }
-        })
+        JSON.stringify({ quality: { tests: { enabled: false } } })
       );
 
       const config = await loadConfig(configPath);
 
-      expect(config.agent.maxRetries).toBe(5);
+      expect(config.quality.tests.enabled).toBe(false);
       expect(config.security.secrets).toBe(true);
     } finally {
       await rm(directory, {
@@ -80,11 +76,7 @@ describe("loadConfig", () => {
 
       await writeFile(
         configPath,
-        JSON.stringify({
-          agent: {
-            maxRetries: 50
-          }
-        })
+        JSON.stringify({ unknownAgentOptions: { maxRetries: 50 } })
       );
 
       await expect(

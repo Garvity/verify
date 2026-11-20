@@ -1,13 +1,14 @@
 {
   "id": "admin-only-delete",
-  "description": "Fix canDeleteUsers in src/permissions.mjs so only the exact role string admin is authorized. viewer, guest, unknown roles, empty strings, and non-string values must be denied.",
-  "expectedOutcome": "User deletion permission is granted only to the admin role and denied for all other values.",
+  "description": "Review user-deletion authorization for role escalation and least-privilege errors.",
   "fixture": "fixtures/security-fix",
-  "hiddenTests": ["hidden-tests/admin-only-delete.test.mjs"],
-  "maxRetries": 2,
-  "testTimeoutMs": 30000,
-  "verification": {
-    "requirePass": true,
-    "forbiddenRuleIds": []
-  }
+  "lineTolerance": 2,
+  "expectedFindings": [
+    {
+      "filePath": "src/permissions.mjs",
+      "line": 2,
+      "severity": "high",
+      "category": "security"
+    }
+  ]
 }

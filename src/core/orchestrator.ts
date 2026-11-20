@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 
 import type { Finding } from "./finding.js";
-import type { VerificationCheck, VerificationResult } from "./result.js";
+import type { AIReviewSummary, VerificationCheck, VerificationResult } from "./result.js";
 
 import { loadConfig } from "../config/loader.js";
 import { readGitDiff } from "../git/diff-reader.js";
@@ -19,11 +19,13 @@ import { detectDependencyChanges } from "../analyzers/structural/dependency-chan
 import { detectConfigChanges } from "../analyzers/structural/config-changes.js";
 
 import { evaluatePolicies } from "../policies/engine.js";
+import { reviewChanges } from "../ai/review/reviewer.js";
 
 export interface RunVerificationOptions {
   base?: string;
   all?: boolean;
   runChecks?: boolean;
+  aiReview?: boolean;
   baseline?: BaselineSnapshot;
   cwd?: string;
 }
@@ -48,7 +50,7 @@ export async function runVerification(
   if (config.security.sensitiveFiles) analyzers.push(detectSensitiveFiles);
   if (config.security.dangerousPatterns) analyzers.push(detectDangerousPatterns);
 
-  const findings: Finding[] = [
+  const deterministicRawFindings: Finding[] = [
     ...analyzers.flatMap((analyze) => analyze(changedFiles)),
     ...detectDeletedTests(changedFiles),
     ...detectDependencyChanges(changedFiles),
@@ -70,7 +72,7 @@ export async function runVerification(
 
     for (const check of checks) {
       if (check.passed) continue;
-      findings.push({
+      deterministicRawFindings.push({
         id: `QUALITY_CHECK_FAILED:${check.id}`,
         ruleId: "QUALITY_CHECK_FAILED",
         severity: "high",
@@ -84,7 +86,7 @@ export async function runVerification(
 
   // 5. Apply verification policies.
   const policyResult = evaluatePolicies(
-    findings,
+    deterministicRawFindings,
     options.all ? [] : changedFiles,
     config
   );
@@ -93,22 +95,63 @@ export async function runVerification(
     findings: policyResult.findings,
     ...(options.runChecks ? { checks } : {})
   };
-  const baselineComparison = options.baseline
-    ? compareBaseline(currentSnapshot, options.baseline)
+  const rawBaselineComparison = options.baseline
+    ? compareBaseline(currentSnapshot, {
+      ...options.baseline,
+      findings: options.baseline.findings.filter((finding) => finding.source !== "ai")
+    })
     : undefined;
+  const markDeterministic = (finding: Finding) => ({ ...finding, source: "deterministic" as const });
+  const baselineComparison = rawBaselineComparison
+    ? {
+      ...rawBaselineComparison,
+      findings: {
+        introduced: rawBaselineComparison.findings.introduced.map(markDeterministic),
+        persistent: rawBaselineComparison.findings.persistent.map(markDeterministic),
+        resolved: rawBaselineComparison.findings.resolved.map(markDeterministic)
+      }
+    }
+    : undefined;
+
+  const deterministicFindings = policyResult.findings.map(markDeterministic);
+  let aiReview: AIReviewSummary | undefined;
+  let aiFindings: Finding[] = [];
+  if (options.aiReview && options.all) {
+    aiReview = {
+      status: "skipped",
+      errorCode: "full_scan_not_supported",
+      durationMs: 0
+    };
+  } else if (options.aiReview) {
+    const reviewStartedAt = performance.now();
+    try {
+      const result = await reviewChanges(changedFiles, { cwd });
+      aiReview = result.review;
+      aiFindings = result.findings;
+    } catch {
+      // AI failures must not change the deterministic result or expose provider details.
+      aiReview = {
+        status: "failed",
+        errorCode: "provider_error",
+        durationMs: Math.round(performance.now() - reviewStartedAt)
+      };
+    }
+  }
+  const findings = [...deterministicFindings, ...aiFindings];
 
   // 6. Return the common verification result.
   return {
     id: randomUUID(),
     status: policyResult.blocked ? "failed" : "passed",
-    findings: policyResult.findings,
+    findings,
     ...(options.runChecks ? { checks } : {}),
     ...(baselineComparison ? { baselineComparison } : {}),
+    ...(aiReview ? { aiReview } : {}),
     summary: {
       filesScanned: changedFiles.length,
-      checksRun: analyzers.length + 3 + checks.length,
-      totalFindings: policyResult.findings.length,
-      blockingFindings: policyResult.findings.filter(
+      checksRun: analyzers.length + 3 + checks.length + (options.aiReview ? 1 : 0),
+      totalFindings: findings.length,
+      blockingFindings: findings.filter(
         (finding) => finding.blocking
       ).length
     },

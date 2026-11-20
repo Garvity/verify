@@ -4,12 +4,12 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { VerifyError } from "../core/error.js";
-import { agentCommand } from "./commands/agent.js";
 import { checkCommand } from "./commands/check.js";
 import { evalCommand } from "./commands/eval.js";
 import { initCommand } from "./commands/init.js";
 import { modelsCommand } from "./commands/models.js";
 import { reportCommand } from "./commands/report.js";
+import { reviewCommand } from "./commands/review.js";
 import { rulesCommand } from "./commands/rules.js";
 import { scanCommand } from "./commands/scan.js";
 import { versionCommand } from "./commands/version.js";
@@ -24,7 +24,7 @@ Commands:
   init     Create a default .verifyrc.json
   rules    List implemented verification rules
   models   List models exposed by the configured provider
-  agent    Run the minimal integrated coding agent
+  review   Run deterministic verification and the read-only AI reviewer
   eval     Compare two or three models on benchmark tasks
   report   Render a saved verification or evaluation result
   version  Display the installed version
@@ -57,7 +57,7 @@ export async function runCli(args: string[]): Promise<number> {
       case "init": return await initCommand(commandArgs);
       case "rules": return await rulesCommand(commandArgs);
       case "models": return await modelsCommand(commandArgs);
-      case "agent": return await agentCommand(commandArgs);
+      case "review": return await reviewCommand(commandArgs);
       case "eval": return await evalCommand(commandArgs);
       case "report": return await reportCommand(commandArgs);
       case "version": return await versionCommand(commandArgs);

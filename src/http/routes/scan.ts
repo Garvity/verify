@@ -107,6 +107,7 @@ export async function handleScanRequest(
       base: parsed.data.base,
       all: parsed.data.all,
       runChecks: parsed.data.runChecks,
+      aiReview: parsed.data.aiReview,
       cwd: options.cwd
     });
     options.onResult(result);

@@ -9,5 +9,3 @@ These figures describe only the small named sample set. They are regression meas
 Run the measurements with:
 
     pnpm test:security
-
-Agent boundary adversarial cases separately verify traversal, symlink escape, secret read and verification-control write rejection.

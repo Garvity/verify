@@ -93,17 +93,6 @@ export const VerifyConfigSchema = z
             ["pnpm", "exec", "tsc", "--noEmit"]
           ])
       })
-      .prefault({}),
-
-    agent: z
-      .object({
-        maxRetries: z
-          .number()
-          .int()
-          .min(0)
-          .max(10)
-          .default(3)
-      })
       .prefault({})
   })
   .strict();

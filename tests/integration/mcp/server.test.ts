@@ -26,6 +26,9 @@ const mockResult: VerificationResult = {
       severity: "medium",
       category: "quality",
       message: "Test assertion removed",
+      source: "ai",
+      confidence: 0.91,
+      evidence: [{ filePath: "src/app.test.ts", line: 10, snippet: "assert.equal(x, y)", explanation: "This assertion was removed." }],
       filePath: "src/app.test.ts",
       line: 10,
       blocking: false
@@ -63,7 +66,7 @@ describe("MCP integration", () => {
     return { handler, server, client };
   }
 
-  it("exposes both verification tools", async () => {
+  it("exposes verification, AI review, and findings tools", async () => {
     const { server, client } = await createTestConnection();
 
     try {
@@ -72,7 +75,26 @@ describe("MCP integration", () => {
       const names = result.tools.map((tool) => tool.name);
 
       expect(names).toContain("verify_changes");
+      expect(names).toContain("review_changes");
       expect(names).toContain("get_findings");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("requests the combined AI review tool and returns its unified result", async () => {
+    const { handler, server, client } = await createTestConnection();
+
+    try {
+      const response = await client.callTool({
+        name: "review_changes",
+        arguments: { base: "main" }
+      });
+
+      expect(handler).toHaveBeenCalledWith({ base: "main", aiReview: true });
+      expect(response.isError).not.toBe(true);
+      expect(JSON.stringify(response.content)).toContain("test-verification-001");
     } finally {
       await client.close();
       await server.close();
@@ -117,6 +139,24 @@ describe("MCP integration", () => {
 
       expect(output).toContain("SECRET001");
       expect(output).not.toContain("TEST001");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("filters findings by source", async () => {
+    const { server, client } = await createTestConnection();
+
+    try {
+      await client.callTool({ name: "review_changes", arguments: {} });
+      const response = await client.callTool({
+        name: "get_findings",
+        arguments: { source: "ai" }
+      });
+      const output = JSON.stringify(response.content);
+      expect(output).toContain("TEST001");
+      expect(output).not.toContain("SECRET001");
     } finally {
       await client.close();
       await server.close();

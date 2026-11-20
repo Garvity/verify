@@ -7,6 +7,7 @@ import { verificationOutputSchema } from "./schemas.js";
 
 export interface VerifyChangesInput {
   base?: string;
+  aiReview?: boolean;
 }
 
 export type VerifyChangesHandler = (
@@ -23,20 +24,23 @@ export function registerVerifyChangesTool(
     {
       title: "Verify current changes",
       description:
-        "Run deterministic verification against the current Git changes. " +
-        "Returns the verification status, findings and summary.",
+        "Run deterministic verification against current Git changes. Set aiReview=true to also request the read-only AI reviewer. " +
+        "AI failure is reported separately and does not change deterministic status.",
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: false,
         openWorldHint: false
       },
-      inputSchema: { base: z.string().min(1).optional() },
+      inputSchema: {
+        base: z.string().min(1).optional(),
+        aiReview: z.boolean().optional()
+      },
       outputSchema: verificationOutputSchema
     },
-    async ({ base }) => {
+    async ({ base, aiReview }) => {
       try {
-        const result = await runVerification({ base });
+        const result = await runVerification({ base, aiReview });
         state.latestResult = result;
         return {
           structuredContent: { ...result },

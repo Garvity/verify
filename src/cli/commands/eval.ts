@@ -11,8 +11,8 @@ import { parseCommandArgs, requireStringOption } from "../arguments.js";
 
 const HELP =
   "Usage: verify eval --benchmark <tasks-dir|task.json> --models <model-a,model-b[,model-c]> [--pricing <prices.json>] [--output <path>]\n\n" +
-  "Run identical benchmark tasks for two or three explicit model IDs from the configured provider.\n" +
-  "Each model/task pair starts from a fresh fixture copy and temporary Git commit.";
+  "Compare two or three explicit AI reviewers against labeled code-change fixtures.\n" +
+  "Each model/task pair receives an isolated, immutable fixture copy.";
 
 function defaultOutputPath(root: string, createdAt: string): string {
   const safeDate = createdAt.replace(/[:.]/g, "-");

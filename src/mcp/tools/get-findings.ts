@@ -1,9 +1,9 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import type { VerificationResult } from "../../core/result.js";
+import type { AIReviewSummary, VerificationResult } from "../../core/result.js";
 import type { VerificationSessionState } from "./state.js";
-import { findingOutputSchema } from "./schemas.js";
+import { aiReviewOutputSchema, findingOutputSchema } from "./schemas.js";
 
 export function registerGetFindingsTool(
   server: McpServer,
@@ -24,16 +24,18 @@ export function registerGetFindingsTool(
       },
       inputSchema: {
         blockingOnly: z.boolean().optional(),
-        severity: z.enum(["critical", "high", "medium", "low", "info"]).optional()
+        severity: z.enum(["critical", "high", "medium", "low", "info"]).optional(),
+        source: z.enum(["deterministic", "ai"]).optional()
       },
       outputSchema: z.object({
         verificationId: z.string(),
         status: z.enum(["passed", "failed", "error"]),
         totalFindings: z.number(),
-        findings: z.array(findingOutputSchema)
+        findings: z.array(findingOutputSchema),
+        aiReview: aiReviewOutputSchema.nullable().optional()
       })
     },
-    async ({ blockingOnly, severity }) => {
+    async ({ blockingOnly, severity, source }) => {
       if (!state.latestResult) {
         return {
           content: [{
@@ -47,12 +49,14 @@ export function registerGetFindingsTool(
       let findings = state.latestResult.findings;
       if (blockingOnly) findings = findings.filter((finding) => finding.blocking);
       if (severity) findings = findings.filter((finding) => finding.severity === severity);
+      if (source) findings = findings.filter((finding) => (finding.source ?? "deterministic") === source);
 
       const output: FindingsOutput = {
         verificationId: state.latestResult.id,
         status: state.latestResult.status,
         totalFindings: findings.length,
-        findings
+        findings,
+        aiReview: state.latestResult.aiReview ?? null
       };
 
       return {
@@ -68,4 +72,5 @@ interface FindingsOutput {
   status: VerificationResult["status"];
   totalFindings: number;
   findings: VerificationResult["findings"];
+  aiReview: AIReviewSummary | null;
 }

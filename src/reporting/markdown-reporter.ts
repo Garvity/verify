@@ -34,6 +34,12 @@ export function renderMarkdownReport(result: VerificationResult): string {
     }
   }
 
+  if (result.aiReview) {
+    const model = result.aiReview.model ? ` · model: \`${result.aiReview.model}\`` : "";
+    const error = result.aiReview.errorCode ? ` · ${result.aiReview.errorCode}` : "";
+    lines.push("", `- **AI review:** ${result.aiReview.status}${model}${error}`);
+  }
+
   lines.push("", "## Findings", "");
   if (result.findings.length === 0) {
     lines.push("No findings.");
@@ -42,8 +48,13 @@ export function renderMarkdownReport(result: VerificationResult): string {
       const location = finding.filePath
         ? ` (${finding.filePath}${finding.line ? `:${finding.line}` : ""})`
         : "";
-      lines.push(`- **${finding.severity} · ${finding.ruleId}**${location}: ${finding.message}`);
+      const source = finding.source === "ai" ? "AI review" : "Deterministic";
+      const confidence = finding.confidence === undefined ? "" : ` · ${(finding.confidence * 100).toFixed(0)}% confidence`;
+      lines.push(`- **${source} · ${finding.severity} · ${finding.ruleId}**${confidence}${location}: ${finding.message}`);
       if (finding.remediation) lines.push(`  - Remediation: ${finding.remediation}`);
+      for (const evidence of finding.evidence ?? []) {
+        lines.push(`  - Evidence (${evidence.filePath}:${evidence.line}): ${JSON.stringify(evidence.snippet)} — ${evidence.explanation}`);
+      }
     }
   }
 

@@ -1,6 +1,6 @@
 # Verify
 
-**A deterministic verification layer for AI-assisted code changes.** Verify reviews a Git diff for security, quality, policy, and configuration risks, then returns the same structured result through a CLI, an MCP server, or a local HTTP API.
+**An independent verification platform for AI-assisted code changes.** Verify combines deterministic checks with an optional, read-only AI code review and returns one evidence-backed report through a CLI, MCP server, or local HTTP API.
 
 AI agents can produce plausible code quickly. Teams still need a repeatable way to inspect what changed, run repository-approved checks, and keep the agent from declaring its own work safe. Verify puts that independent gate between a code change and a merge decision. Its core checks run without an LLM or provider credentials.
 
@@ -10,7 +10,8 @@ AI agents can produce plausible code quickly. Teams still need a repeatable way 
 - Runs enabled tests, lint, and typecheck commands through a configured command allowlist, without a shell, with time and output limits.
 - Applies protected-path policy and can compare findings with a saved baseline to distinguish introduced, persistent, and resolved issues.
 - Exposes one verification engine to developers, CI jobs, and MCP clients, so each interface uses the same rules and status logic.
-- Optionally runs a bounded coding agent. The agent cannot edit verification controls, and only the deterministic verifier can mark its result as passing.
+- Optionally sends redacted changed lines to an independent FreeLLMAPI reviewer. It returns validated findings and evidence without reading or modifying repository files.
+- Keeps external coding harnesses in control: they investigate findings, make changes, and request re-verification through MCP.
 
 ## Example output
 
@@ -41,11 +42,11 @@ pnpm dev scan --base main --format json > verify-result.json
 pnpm dev report --input verify-result.json --format markdown
 ```
 
-Exit codes are `0` for a pass, `1` for blocking findings, `2` for invalid arguments or configuration, and `3` for an execution error or an agent run that did not verify successfully.
+Exit codes are `0` for deterministic verification pass, `1` for blocking deterministic findings, `2` for invalid arguments or configuration, and `3` for an execution error. AI reviewer availability and findings are reported separately and never change deterministic pass/fail status.
 
 ## Architecture
 
-The interfaces are adapters around one orchestrator. Analysis and pass/fail decisions stay in the deterministic core; optional model calls are kept on the agent path.
+CLI, MCP, and HTTP adapters call the same orchestrator. Deterministic verification always runs locally; an explicitly requested read-only reviewer adds a separate findings layer.
 
 ```mermaid
 flowchart LR
@@ -63,20 +64,19 @@ flowchart LR
   Core --> Checks[Allowlisted quality commands]
   Policy --> Result[Structured verification result]
   Checks --> Result
+  Review[Optional read-only AI reviewer] --> Gateway[OpenAI-compatible gateway]
+  Review --> Result
   Result --> Render[Terminal, JSON, Markdown, MCP, or HTTP]
 
   Core --> Baseline[Optional baseline comparison]
   Baseline --> Result
 
-  User[User task] --> CodingAgent[Optional coding agent]
-  CodingAgent <--> Gateway[OpenAI-compatible model gateway]
-  CodingAgent --> Tools[Restricted repository tools]
-  Tools --> Source[Allowed source files]
-  CodingAgent --> Core
+  Harness[External coding harness] --> MCP
+  Harness --> Fixes[Investigates and fixes findings]
+  Fixes --> Git
 
-  Eval[Evaluation runner] --> Fixtures[Isolated fixture repositories]
-  Fixtures --> CodingAgent
-  Fixtures --> Hidden[Private task tests and metrics]
+  Eval[Review evaluation runner] --> Fixtures[Immutable labeled code changes]
+  Fixtures --> Review
 ```
 
 ### Verification flow
@@ -85,9 +85,10 @@ flowchart LR
 2. Read changed Git content, or all eligible text files when `--all` is requested.
 3. Run deterministic analyzers and apply policy.
 4. For `check`, run enabled quality commands under the configured allowlist and limits.
-5. Compare against an optional baseline and return a structured result.
+5. If requested, send redacted changed lines to the AI reviewer and validate its structured findings against those lines.
+6. Compare deterministic findings against an optional baseline and return a unified structured result.
 
-The agent can request edits, but it cannot approve its own output. A passing status comes from the same verifier used by the standalone CLI.
+The AI reviewer cannot edit files or approve its own output. Deterministic findings, AI findings, their evidence, confidence, and review status remain distinguishable in the report.
 
 ## Interfaces and integrations
 
@@ -96,8 +97,8 @@ The agent can request edits, but it cannot approve its own output. A passing sta
 | CLI | Local reviews, scripts, and CI | No |
 | MCP over stdio | Coding clients such as Codex and OpenCode | No |
 | HTTP on loopback | Local tools that need a simple API | No |
-| Optional agent | Bounded code changes followed by verification | Yes |
-| Evaluation runner | Compare explicit models on isolated tasks | Yes |
+| `review` / MCP `review_changes` | Add read-only model findings to deterministic checks | Yes |
+| Evaluation runner | Compare explicit reviewers on labeled changes | Yes |
 
 - [MCP setup and tools](docs/MCP.md)
 - [HTTP endpoints and request format](docs/HTTP.md)
@@ -119,20 +120,22 @@ The MCP server uses stdio and does not open a network port. The HTTP API binds t
 | Build and types | TypeScript compiler, declarations, source maps |
 | Tests | Vitest, V8 coverage, MCP client/server integration tests |
 
-## Optional coding agent
+## Independent AI code reviewer
 
-The deterministic verifier works independently of AI. To enable model-backed commands, copy `.env.example` to `.env`, start FreeLLMAPI, and set `VERIFY_LLM_API_KEY` and `VERIFY_LLM_BASE_URL`. Keep `.env` local and out of source control. The default model alias is `auto`, which lets FreeLLMAPI route and apply its configured fallback behavior.
+The reviewer is read-only and runs only when requested. It sends redacted changed lines to FreeLLMAPI, asks for evidence-backed structured findings, then validates every reported location and excerpt against the submitted change. Sensitive paths such as `.env`, private keys, credentials files, and SSH material are omitted. Provider or response failures appear in `aiReview` metadata and leave deterministic status intact.
 
 ```sh
-pnpm dev models
-pnpm dev agent --task "Fix the bug described in the issue" --task-type coding
+cp .env.example .env
+# Set VERIFY_REVIEW_API_KEY in .env; keep the file local and untracked.
+pnpm dev review --base main
+pnpm dev models --review
 ```
 
-The agent has bounded retries and restricted repository tools. It can read eligible repository text and write under `src/` outside verification controls; it cannot change tests, policies, configuration, analyzers, or its own controls. Each edit cycle is checked by the deterministic orchestrator. See [AI setup and boundaries](docs/AI.md).
+Configure `VERIFY_REVIEW_API_KEY`, `VERIFY_REVIEW_BASE_URL`, `VERIFY_REVIEW_MODEL`, and `VERIFY_REVIEW_TIMEOUT_MS`. The default endpoint is FreeLLMAPI's local OpenAI-compatible endpoint and the default model alias is `auto`. Deterministic scans do not load or require these settings. The external coding harness remains responsible for interpreting findings, making changes, and asking Verify to check them again. See [AI review configuration and data handling](docs/AI.md).
 
 ## Model evaluation
 
-The evaluation runner compares two or three explicit model IDs on bug-fix, feature, and security tasks. Each task/model run starts from a fresh fixture repository; hidden tests remain outside the agent workspace. Reports record task completion, hidden-test results, verification, regressions, model routing, usage, latency, and cost when explicit prices are provided.
+The evaluation runner compares two or three explicit model IDs on labeled bug-fix, feature, and security changes. Each task/model run starts from a fresh immutable fixture copy. Reports measure finding precision, recall, F1, severity mismatch, latency, usage, and cost when explicit prices are provided.
 
 ```sh
 pnpm dev eval --benchmark benchmarks/tasks --models model-a,model-b

@@ -11,7 +11,6 @@ describe("VerifyConfigSchema", () => {
 
     if (result.success) {
       expect(result.data.security.secrets).toBe(true);
-      expect(result.data.agent.maxRetries).toBe(3);
       expect(result.data.execution.timeoutMs).toBe(120000);
     }
   });
@@ -21,27 +20,15 @@ describe("VerifyConfigSchema", () => {
       security: {
         secrets: false
       },
-      agent: {
-        maxRetries: 5
-      }
+      execution: { timeoutMs: 30_000 }
     });
 
     expect(result.success).toBe(true);
 
     if (result.success) {
       expect(result.data.security.secrets).toBe(false);
-      expect(result.data.agent.maxRetries).toBe(5);
+      expect(result.data.execution.timeoutMs).toBe(30_000);
     }
-  });
-
-  it("should reject an invalid retry count", () => {
-    const result = VerifyConfigSchema.safeParse({
-      agent: {
-        maxRetries: 20
-      }
-    });
-
-    expect(result.success).toBe(false);
   });
 
   it("should reject a negative timeout", () => {

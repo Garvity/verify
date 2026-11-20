@@ -16,6 +16,22 @@ export interface VerificationSummary {
   blockingFindings: number;
 }
 
+export interface AIReviewSummary {
+  status: "completed" | "unavailable" | "failed" | "skipped";
+  model?: string;
+  servedModel?: string;
+  provider?: string;
+  errorCode?:
+    | "not_configured"
+    | "invalid_config"
+    | "provider_error"
+    | "invalid_response"
+    | "input_too_large"
+    | "no_reviewable_changes"
+    | "full_scan_not_supported";
+  durationMs: number;
+}
+
 /** A configured quality command executed during `verify check`. */
 export interface VerificationCheck {
   id: "tests" | "lint" | "typecheck";
@@ -52,6 +68,9 @@ export interface VerificationResult {
 
   /** Informational comparison; current blocking findings still determine status. */
   baselineComparison?: BaselineComparison;
+
+  /** Present when AI review was explicitly requested. It never changes deterministic status. */
+  aiReview?: AIReviewSummary;
 
   summary: VerificationSummary;
 

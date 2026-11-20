@@ -29,6 +29,8 @@ describe("compiled CLI end-to-end", () => {
     expect(help).toContain("report");
     expect(help).toContain("version");
     expect(help).toContain("eval");
+    expect(help).toContain("review");
+    expect(help).not.toContain("agent");
 
     const rules = JSON.parse(runCli(["rules", "--format", "json"])) as Array<{ id: string }>;
     expect(rules.some((rule) => rule.id === "QUALITY_CHECK_FAILED")).toBe(true);

@@ -56,4 +56,39 @@ describe("verification report formats", () => {
     expect(output).toContain("SECRET_API_KEY");
     expect(output).toContain("Move the value into a secret store.");
   });
+
+  it("distinguishes AI findings with confidence, evidence, and review status", () => {
+    const combined: VerificationResult = {
+      ...result,
+      aiReview: { status: "completed", model: "auto", servedModel: "review-v1", durationMs: 35 },
+      findings: [...result.findings, {
+        id: "AI_REVIEW:INPUT_VALIDATION:src/input.ts:8:1",
+        ruleId: "INPUT_VALIDATION",
+        severity: "medium",
+        category: "security",
+        message: "Request input is used without validation.",
+        filePath: "src/input.ts",
+        line: 8,
+        blocking: false,
+        source: "ai",
+        confidence: 0.91,
+        evidence: [{
+          filePath: "src/input.ts",
+          line: 8,
+          snippet: "request.query.value",
+          explanation: "The changed line passes request data directly into the query."
+        }]
+      }]
+    };
+
+    const terminal = renderResult(combined, "terminal");
+    expect(terminal).toContain("AI review: completed (auto)");
+    expect(terminal).toContain("[AI REVIEW · 91% confidence]");
+    expect(terminal).toContain("Evidence: src/input.ts:8: request.query.value");
+
+    const markdown = renderResult(combined, "markdown");
+    expect(markdown).toContain("**AI review:** completed");
+    expect(markdown).toContain("91% confidence");
+    expect(markdown).toContain("request.query.value");
+  });
 });

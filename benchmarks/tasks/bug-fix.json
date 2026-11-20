@@ -1,13 +1,14 @@
 {
   "id": "inclusive-range",
-  "description": "Fix isInRange in src/range.mjs so it returns true when value is exactly equal to either bound. Keep the function name and arguments unchanged.",
-  "expectedOutcome": "The lower and upper bounds are inclusive, and values outside the interval return false.",
+  "description": "Review the inclusive range implementation for correctness at the interval boundaries.",
   "fixture": "fixtures/bug-fix",
-  "hiddenTests": ["hidden-tests/inclusive-range.test.mjs"],
-  "maxRetries": 2,
-  "testTimeoutMs": 30000,
-  "verification": {
-    "requirePass": true,
-    "forbiddenRuleIds": []
-  }
+  "lineTolerance": 2,
+  "expectedFindings": [
+    {
+      "filePath": "src/range.mjs",
+      "line": 2,
+      "severity": "medium",
+      "category": "quality"
+    }
+  ]
 }

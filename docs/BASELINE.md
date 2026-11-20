@@ -1,6 +1,6 @@
 # Baseline comparison
 
-Save a full-repository result before an agent starts changing code:
+Save a full-repository result before an external coding harness starts changing code:
 
 ```sh
 pnpm dev check --all --format json > /tmp/verify-baseline.json

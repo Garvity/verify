@@ -1,13 +1,12 @@
 {
   "name": "verify",
   "version": "1.0.0",
-  "description": "Deterministic verification, MCP tooling, and model evaluation for AI coding agents.",
+  "description": "Deterministic verification and read-only AI code review through CLI, MCP, and HTTP.",
   "main": "./dist/cli/index.js",
   "files": [
     "dist/**",
     "benchmarks/tasks/**",
     "benchmarks/fixtures/**",
-    "benchmarks/hidden-tests/**",
     "README.md",
     "screenshots/**",
     "docs/**",
@@ -31,7 +30,7 @@
     "http:dev": "tsx src/http/main.ts",
     "pack:check": "pnpm build && pnpm pack --dry-run"
   },
-  "keywords": ["ai-agents", "verification", "mcp", "security", "benchmark"],
+  "keywords": ["ai-code-review", "verification", "mcp", "security", "benchmark"],
   "author": "",
   "license": "ISC",
   "engines": {

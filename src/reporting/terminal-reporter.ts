@@ -43,14 +43,28 @@ export function renderTerminalReport(result: VerificationResult): string {
     }
   }
 
+  if (result.aiReview) {
+    const requestedModel = result.aiReview.model ? ` (${result.aiReview.model})` : "";
+    const failure = result.aiReview.errorCode ? ` · ${result.aiReview.errorCode}` : "";
+    lines.push("", `AI review: ${result.aiReview.status}${requestedModel}${failure}`);
+  }
+
   if (result.findings.length) {
     lines.push("", "Findings:");
     for (const finding of result.findings) {
+      const source = finding.source === "ai" ? "AI REVIEW" : "DETERMINISTIC";
+      const confidence = finding.confidence === undefined
+        ? ""
+        : ` · ${(finding.confidence * 100).toFixed(0)}% confidence`;
       const location = finding.filePath
         ? `${finding.filePath}${finding.line ? `:${finding.line}` : ""}: `
         : "";
-      lines.push(`  [${finding.severity.toUpperCase()}] ${location}${finding.message}`);
+      lines.push(`  [${finding.severity.toUpperCase()}] [${source}${confidence}] ${location}${finding.message}`);
       if (finding.remediation) lines.push(`    Remediation: ${finding.remediation}`);
+      for (const evidence of finding.evidence ?? []) {
+        lines.push(`    Evidence: ${evidence.filePath}:${evidence.line}: ${evidence.snippet}`);
+        if (evidence.explanation) lines.push(`      Why: ${evidence.explanation}`);
+      }
     }
   }
 

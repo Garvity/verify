@@ -10,8 +10,33 @@ export const findingOutputSchema = z.object({
   line: z.number().optional(),
   column: z.number().optional(),
   blocking: z.boolean(),
-  remediation: z.string().optional()
+  remediation: z.string().optional(),
+  source: z.enum(["deterministic", "ai"]).optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  evidence: z.array(z.object({
+    filePath: z.string(),
+    line: z.number().int().positive(),
+    snippet: z.string(),
+    explanation: z.string()
+  }).strict()).optional()
 });
+
+export const aiReviewOutputSchema = z.object({
+  status: z.enum(["completed", "unavailable", "failed", "skipped"]),
+  model: z.string().optional(),
+  servedModel: z.string().optional(),
+  provider: z.string().optional(),
+  errorCode: z.enum([
+    "not_configured",
+    "invalid_config",
+    "provider_error",
+    "invalid_response",
+    "input_too_large",
+    "no_reviewable_changes",
+    "full_scan_not_supported"
+  ]).optional(),
+  durationMs: z.number()
+}).strict();
 
 export const verificationOutputSchema = z.object({
   id: z.string(),
@@ -33,6 +58,7 @@ export const verificationOutputSchema = z.object({
     totalFindings: z.number(),
     blockingFindings: z.number()
   }),
+  aiReview: aiReviewOutputSchema.optional(),
   durationMs: z.number(),
   timestamp: z.string()
 });

@@ -1,27 +1,29 @@
-import type { AgentRunResult } from "../agent/loop.js";
+import type { Finding, FindingCategory, FindingSeverity } from "../../core/finding.js";
+import type { AIReviewSummary } from "../../core/result.js";
 import type { TokenUsageSummary } from "../gateway/usage.js";
+
+/** Ground-truth labels used to score a review against a benchmark fixture. */
+export interface ExpectedFinding {
+  filePath: string;
+  line: number;
+  category: FindingCategory;
+  severity: FindingSeverity;
+}
 
 export interface BenchmarkTask {
   id: string;
   description: string;
-  expectedOutcome: string;
   fixture: string;
-  hiddenTests: string[];
-  maxRetries: number;
-  testTimeoutMs: number;
-  verification: {
-    requirePass: boolean;
-    forbiddenRuleIds: string[];
-  };
+  expectedFindings: ExpectedFinding[];
+  /** A review can point to a nearby line while still identifying the labelled issue. */
+  lineTolerance: number;
 }
 
 export interface LoadedBenchmarkTask extends BenchmarkTask {
   definitionPath: string;
   fixturePath: string;
-  hiddenTestPaths: string[];
   definitionSha256: string;
   fixtureSha256: string;
-  hiddenTestSha256: Record<string, string>;
 }
 
 export interface LoadedBenchmark {
@@ -39,46 +41,47 @@ export type PriceBook = Record<string, ModelPrice>;
 
 export interface EvaluationRun {
   taskId: string;
+  /** Requested model ID (kept as `model` for concise report tables). */
   model: string;
-  status: AgentRunResult["status"] | "error";
-  taskCompleted: boolean;
-  verificationPassed: boolean;
-  hiddenTestsPassed: boolean | null;
-  hiddenTestDurationMs: number;
-  securityViolationCount: number;
-  regressionCount: number;
-  findingRuleIds: string[];
-  retryCount: number;
-  verificationAttempts: number;
+  reviewStatus: AIReviewSummary["status"];
+  review: AIReviewSummary;
+  findings: Finding[];
+  expectedFindingCount: number;
+  truePositiveCount: number;
+  falsePositiveCount: number;
+  falseNegativeCount: number;
+  severityMismatchCount: number;
+  precision: number;
+  recall: number;
+  f1: number;
   latencyMs: number;
   usage: TokenUsageSummary;
   costUsd: number | null;
   pricingAssumption?: string;
-  servedModels: string[];
-  providers: string[];
-  baseCommit: string;
-  error?: string;
+  requestedModel: string;
+  servedModel?: string;
+  provider?: string;
+  failureReason?: string;
 }
 
 export interface ModelMetrics {
+  /** Requested model ID. */
   model: string;
   runs: number;
-  completedTasks: number;
-  taskCompletionRate: number;
-  hiddenTestsRun: number;
-  hiddenTestsPassed: number;
-  hiddenTestPassRate: number | null;
-  verificationPassRate: number;
-  securityViolationRate: number;
-  securityViolationCount: number;
-  regressionRate: number;
-  regressionCount: number;
-  averageRetries: number;
+  successfulReviews: number;
+  reviewSuccessRate: number;
+  expectedFindingCount: number;
+  truePositiveCount: number;
+  falsePositiveCount: number;
+  falseNegativeCount: number;
+  severityMismatchCount: number;
+  precision: number;
+  recall: number;
+  f1: number;
   averageLatencyMs: number;
   inputTokens: number | null;
   outputTokens: number | null;
   costUsd: number | null;
-  costPerPassingTaskUsd: number | null;
 }
 
 export interface EvaluationResult {
@@ -96,7 +99,6 @@ export interface EvaluationResult {
     taskId: string;
     definitionSha256: string;
     fixtureSha256: string;
-    hiddenTestSha256: Record<string, string>;
   }>;
   runs: EvaluationRun[];
   metrics: ModelMetrics[];
