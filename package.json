@@ -9,6 +9,7 @@
     "benchmarks/fixtures/**",
     "benchmarks/hidden-tests/**",
     "README.md",
+    "screenshots/**",
     "docs/**",
     "LICENSE",
     ".env.example"
