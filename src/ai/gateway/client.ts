@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 
-export const DEFAULT_LLM_BASE_URL = "https://100milionseek.top/v1";
+export const DEFAULT_LLM_BASE_URL = "http://localhost:3001/v1";
 
 export interface GatewayConfig {
   baseURL: string;

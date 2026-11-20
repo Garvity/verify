@@ -51,6 +51,9 @@ export async function assertModelAvailable(
   modelId: string,
   client?: ModelsClient
 ): Promise<void> {
+  // FreeLLMAPI's `auto` is a virtual router alias, not necessarily a catalog entry.
+  if (modelId === "auto") return;
+
   const models = await discoverModels(client);
   if (!models.some((model) => model.id === modelId)) {
     const available = models.map((model) => model.id).join(", ") || "none";

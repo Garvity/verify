@@ -45,7 +45,7 @@ See docs/MCP.md for Codex desktop and OpenCode setup. The included opencode.json
 
 ## Optional model agent
 
-Copy .env.example to .env, then set VERIFY_LLM_API_KEY and VERIFY_LLM_BASE_URL for your OpenAI-compatible provider. Keep .env out of source control.
+Copy .env.example to .env, start FreeLLMAPI, then set VERIFY_LLM_API_KEY to its unified key. The default model is `auto`, which delegates model selection and fallback to FreeLLMAPI. Keep .env out of source control.
 
     pnpm dev models
     pnpm dev agent --task "Fix the bug described in the issue" --task-type coding

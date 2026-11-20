@@ -10,7 +10,7 @@ describe("OpenAI-compatible gateway configuration", () => {
   it("uses the configured provider endpoint and validates the API key lazily", () => {
     expect(() => readGatewayConfig({})).toThrow("VERIFY_LLM_API_KEY");
     expect(readGatewayConfig({ VERIFY_LLM_API_KEY: " local-token " })).toEqual({
-      baseURL: "https://100milionseek.top/v1",
+      baseURL: "http://localhost:3001/v1",
       apiKey: "local-token",
       timeoutMs: 60_000,
       maxRetries: 2
@@ -94,5 +94,6 @@ describe("provider response accounting", () => {
     ]);
     await expect(assertModelAvailable("missing", client)).rejects.toThrow("a-model, z-model");
     await expect(assertModelAvailable("a-model", client)).resolves.toBeUndefined();
+    await expect(assertModelAvailable("auto", client)).resolves.toBeUndefined();
   });
 });

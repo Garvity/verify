@@ -36,8 +36,8 @@ Example:
 
 The schema is strict: unknown keys and invalid types are errors. The sample repository config intentionally disables lint and typecheck because those scripts are not configured in this project.
 
-## Model provider environment
+## FreeLLMAPI environment
 
-Copy .env.example to .env and set VERIFY_LLM_BASE_URL and VERIFY_LLM_API_KEY for an OpenAI-compatible provider. VERIFY_MODEL is the default model. Optional VERIFY_MODEL_SIMPLE, VERIFY_MODEL_CODING, VERIFY_MODEL_REASONING and VERIFY_MODEL_SECURITY values support explicit task routing. VERIFY_CONTEXT_MAX_TOKENS sets the integrated agent's approximate prompt budget.
+Copy .env.example to .env and set VERIFY_LLM_BASE_URL to FreeLLMAPI's `/v1` endpoint and VERIFY_LLM_API_KEY to its unified key. VERIFY_MODEL defaults to `auto`, FreeLLMAPI's automatic routing and fallback alias. Optional VERIFY_MODEL_SIMPLE, VERIFY_MODEL_CODING, VERIFY_MODEL_REASONING and VERIFY_MODEL_SECURITY values support explicit task routing. VERIFY_CONTEXT_MAX_TOKENS sets the integrated agent's approximate prompt budget.
 
 The .env file is ignored by Git. Never commit provider credentials.

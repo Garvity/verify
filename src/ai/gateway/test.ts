@@ -40,7 +40,8 @@ export async function runGatewayCheck(): Promise<GatewayCheckResult> {
   const model = getConfiguredModel();
   const modelPage = await client.models.list();
   const models = modelPage.data.map((entry) => entry.id);
-  if (!models.includes(model)) {
+  // `auto` is FreeLLMAPI's virtual fallback router and can be absent from /models.
+  if (model !== "auto" && !models.includes(model)) {
     throw new Error(`VERIFY_MODEL '${model}' is unavailable. Run 'pnpm dev models' and choose an ID returned by the configured provider.`);
   }
 
