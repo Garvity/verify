@@ -23,13 +23,13 @@ The clean check runs the configured project tests and returns a passing report:
 
 ![Verify CLI check passing with configured tests](screenshots/check-passed.png)
 
-The MCP adapter is exercised with in-memory client/server integration tests. The latest run passed all six MCP integration tests; a separate stdio client smoke test listed all three tools and called `verify_changes` successfully.
+The MCP integration run shown here passed all six tests. A separate stdio smoke test listed the three tools and called `verify_changes` successfully.
 
 ![MCP integration test output showing six passing tests](screenshots/mcp-integration.png)
 
 ## Quick start
 
-**Requirements:** Node.js 20.12 or newer, pnpm 12.21.0, and Git. The current Vitest development suite requires Node.js 22.12+, 24.x, or 26+.
+**Requirements:** Node.js 20.12 or newer, pnpm 12.21.0, and Git.
 
 ```sh
 pnpm install --frozen-lockfile
@@ -148,10 +148,6 @@ pnpm dev eval --benchmark benchmarks/tasks --models model-a,model-b
 
 See [evaluation methodology](docs/EVALUATION.md). The bundled tasks are reproducible examples, not a broad model leaderboard.
 
-One live FreeLLMAPI run on 2026-11-21 completed 7/10 reviews through `auto` (75.0% precision, 66.7% recall, 70.6% F1). The advertised `codestral` model returned provider errors on all 10 tasks. Failed requests count as missed findings; these figures describe one run and do not predict general model quality. The evaluator now exits with code `3` when any model/task review fails.
-
-![Ten-fixture live evaluation report with review success and finding metrics](screenshots/evaluation-output.png)
-
 ## Development and validation
 
 ```sh
@@ -163,15 +159,3 @@ pnpm test:security
 pnpm test:coverage
 pnpm pack:check
 ```
-
-The adversarial analyzer checks currently cover four seeded detections and four benign samples; those small fixtures are regression checks, not estimates of real-world recall or false-positive rates. See [the security evaluation notes](docs/SECURITY_EVALUATION.md).
-
-## Scope and limitations
-
-The security analyzers use focused pattern checks. They are useful as a fast, deterministic review layer, but they do not replace a full static-analysis, dependency-audit, or secret-scanning program. Pattern checks can miss issues and can flag benign code. Review findings in context, especially before automating merge decisions. Quality commands run on the host and should be configured deliberately.
-
-## Further reading
-
-- [Architecture and trust boundaries](docs/ARCHITECTURE.md)
-- [Contributing](CONTRIBUTING.md)
-- [Baseline behavior](docs/BASELINE.md)
