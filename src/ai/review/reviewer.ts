@@ -10,6 +10,7 @@ import type {
   ChatCompletion,
   ChatCompletionCreateParamsNonStreaming
 } from "openai/resources/chat/completions";
+import type OpenAI from "openai";
 import { z } from "zod";
 
 export type { AIReviewSummary };
@@ -79,6 +80,8 @@ export interface ReviewChangesOptions {
   env?: Record<string, string | undefined>;
   /** Per-run model override used by benchmark evaluation. */
   model?: string;
+  /** Injectable client factory for offline gateway configuration tests. */
+  clientFactory?: (config: GatewayConfig) => OpenAI;
   complete?: (request: ChatCompletionCreateParamsNonStreaming) => Promise<ChatCompletion>;
 }
 
@@ -181,10 +184,14 @@ function readReviewConfig(
   env: Record<string, string | undefined>,
   modelOverride?: string
 ): ReviewConfig | "not_configured" {
-  const apiKey = env.VERIFY_REVIEW_API_KEY?.trim();
+  const apiKey = env.VERIFY_REVIEW_API_KEY?.trim() || env.VERIFY_LLM_API_KEY?.trim();
   if (!apiKey) return "not_configured";
 
-  const baseURL = (env.VERIFY_REVIEW_BASE_URL ?? DEFAULT_LLM_BASE_URL).trim();
+  const baseURL = (
+    env.VERIFY_REVIEW_BASE_URL?.trim() ||
+    env.VERIFY_LLM_BASE_URL?.trim() ||
+    DEFAULT_LLM_BASE_URL
+  ).trim();
   let parsedURL: URL;
   try {
     parsedURL = new URL(baseURL);
@@ -199,7 +206,9 @@ function readReviewConfig(
     throw new Error("VERIFY_REVIEW_BASE_URL must be an HTTP(S) URL without credentials, query, or fragment.");
   }
 
-  const model = (modelOverride ?? env.VERIFY_REVIEW_MODEL ?? "auto").trim();
+  const model = (
+    modelOverride ?? (env.VERIFY_REVIEW_MODEL?.trim() || env.VERIFY_MODEL?.trim() || "auto")
+  ).trim();
   if (!model || model.length > 256 || /[\r\n\0]/.test(model)) {
     throw new Error("VERIFY_REVIEW_MODEL must be a non-empty model identifier.");
   }
@@ -209,7 +218,7 @@ function readReviewConfig(
       apiKey,
       baseURL: parsedURL.toString().replace(/\/+$/, ""),
       timeoutMs: readPositiveInteger(
-        env.VERIFY_REVIEW_TIMEOUT_MS,
+        env.VERIFY_REVIEW_TIMEOUT_MS?.trim() || env.VERIFY_LLM_TIMEOUT_MS,
         DEFAULT_TIMEOUT_MS,
         "VERIFY_REVIEW_TIMEOUT_MS",
         MAX_TIMEOUT_MS
@@ -220,7 +229,7 @@ function readReviewConfig(
   };
 }
 
-/** Discover explicit model IDs using the dedicated reviewer gateway settings. */
+/** Discover explicit model IDs using review overrides or the shared gateway settings. */
 export async function listReviewModels(
   env: Record<string, string | undefined> = process.env
 ): Promise<AvailableModel[]> {
@@ -378,10 +387,11 @@ export async function reviewChanges(
       model: config.model,
       messages: buildMessages(sanitizedFiles),
       temperature: 0,
-      max_tokens: 3500
+      max_tokens: 3500,
+      response_format: { type: "json_object" }
     };
     const complete = options.complete ?? ((params) =>
-      createLlmClient(config.gateway).chat.completions.create(params)
+      (options.clientFactory ?? createLlmClient)(config.gateway).chat.completions.create(params)
     );
     response = await complete(request);
   } catch {

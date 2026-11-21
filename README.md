@@ -126,12 +126,13 @@ The reviewer is read-only and runs only when requested. It sends redacted change
 
 ```sh
 cp .env.example .env
-# Set VERIFY_REVIEW_API_KEY in .env; keep the file local and untracked.
+# Optional: set VERIFY_REVIEW_API_KEY for a separate review credential.
+# Otherwise the reviewer reuses VERIFY_LLM_API_KEY. Keep .env untracked.
 pnpm dev review --base main
 pnpm dev models --review
 ```
 
-Configure `VERIFY_REVIEW_API_KEY`, `VERIFY_REVIEW_BASE_URL`, `VERIFY_REVIEW_MODEL`, and `VERIFY_REVIEW_TIMEOUT_MS`. The default endpoint is FreeLLMAPI's local OpenAI-compatible endpoint and the default model alias is `auto`. Deterministic scans do not load or require these settings. The external coding harness remains responsible for interpreting findings, making changes, and asking Verify to check them again. See [AI review configuration and data handling](docs/AI.md).
+Set `VERIFY_REVIEW_*` values only when review needs settings separate from the existing gateway. By default, review reuses `VERIFY_LLM_API_KEY`, `VERIFY_LLM_BASE_URL`, and `VERIFY_LLM_TIMEOUT_MS`, then uses `VERIFY_MODEL` or `auto`. Deterministic scans do not load or require provider settings. The external coding harness remains responsible for interpreting findings, making changes, and asking Verify to check them again. See [AI review configuration and data handling](docs/AI.md).
 
 ## Model evaluation
 

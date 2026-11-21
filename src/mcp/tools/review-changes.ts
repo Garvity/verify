@@ -17,7 +17,7 @@ export function registerReviewChangesTool(
       title: "Verify and review current changes",
       description:
         "Run deterministic verification and the read-only AI code reviewer on current Git changes. " +
-        "Requires VERIFY_REVIEW_API_KEY. The reviewer never edits files; AI errors are included without changing deterministic status.",
+        "Requires review credentials via VERIFY_REVIEW_API_KEY or VERIFY_LLM_API_KEY. The reviewer never edits files; AI errors are included without changing deterministic status.",
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,

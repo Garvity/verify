@@ -4,18 +4,18 @@ Verify's AI reviewer is an optional, read-only second layer over deterministic v
 
 ## Configure
 
-Copy `.env.example` to `.env` and set a dedicated review key. The other settings have defaults:
+Copy `.env.example` to `.env`. Existing `VERIFY_LLM_*` settings work for AI review too. Add review-specific values only to override them:
 
 ```dotenv
-VERIFY_REVIEW_API_KEY=your-FreeLLMAPI-unified-key
-VERIFY_REVIEW_BASE_URL=http://localhost:3001/v1
-VERIFY_REVIEW_MODEL=auto
-VERIFY_REVIEW_TIMEOUT_MS=60000
+VERIFY_REVIEW_API_KEY=
+VERIFY_REVIEW_BASE_URL=
+VERIFY_REVIEW_MODEL=
+VERIFY_REVIEW_TIMEOUT_MS=
 ```
 
-The key is separate from `VERIFY_LLM_API_KEY`. Review uses the same reusable OpenAI-compatible client and default FreeLLMAPI endpoint, but does not fall back to another credential. The reviewer makes one completion request with automatic SDK retries disabled.
+Review-specific settings take precedence. If omitted, the API key, base URL, and timeout reuse `VERIFY_LLM_API_KEY`, `VERIFY_LLM_BASE_URL`, and `VERIFY_LLM_TIMEOUT_MS`; the model uses `VERIFY_MODEL` and then defaults to `auto`. This lets an existing FreeLLMAPI gateway configuration work without copying its key, while still allowing review to use separate credentials or routing. The reviewer makes one completion request with automatic SDK retries disabled.
 
-Use `pnpm dev models --review` to list model IDs exposed to the dedicated review gateway. The `auto` routing alias is configured for review by default and may not appear in the provider's catalog.
+Use `pnpm dev models --review` to list model IDs exposed to the review gateway. The `auto` routing alias may not appear in the provider's catalog.
 
 ## Run a review
 
@@ -49,4 +49,4 @@ Pattern-based secret redaction cannot identify every arbitrary credential. Do no
 
 ## Reusable gateway and evaluation
 
-The OpenAI-compatible gateway, model discovery, usage accounting, and multi-model evaluation tools remain available. Evaluation uses the dedicated reviewer configuration and scores model findings against labeled review fixtures. See [evaluation methodology](EVALUATION.md).
+The OpenAI-compatible gateway, model discovery, usage accounting, and multi-model evaluation tools remain available. Evaluation uses the review configuration and scores model findings against labeled review fixtures. See [evaluation methodology](EVALUATION.md).

@@ -3,8 +3,10 @@ import type {
   ChatCompletion,
   ChatCompletionCreateParamsNonStreaming
 } from "openai/resources/chat/completions";
+import type OpenAI from "openai";
 
 import { reviewChanges } from "../../../src/ai/review/reviewer.js";
+import type { GatewayConfig } from "../../../src/ai/gateway/client.js";
 import type { ParsedFileDiff, ChangedLine } from "../../../src/git/diff-parser.js";
 
 const reviewEnv = {
@@ -108,6 +110,7 @@ describe("read-only AI code reviewer", () => {
       reasoningTokens: null
     });
     expect(complete.mock.calls[0]?.[0].model).toBe("evaluation-model");
+    expect(complete.mock.calls[0]?.[0].response_format).toEqual({ type: "json_object" });
   });
 
   it("redacts credential patterns and PEM blocks before calling the model", async () => {
@@ -242,6 +245,36 @@ describe("read-only AI code reviewer", () => {
     expect(result.usage.totalTokens).toBeNull();
     expect(result.review.servedModel).toBeUndefined();
     expect(complete).not.toHaveBeenCalled();
+  });
+
+  it("reuses the configured FreeLLMAPI gateway when review overrides are unset", async () => {
+    let gatewayConfig: GatewayConfig | undefined;
+    const clientFactory = vi.fn((config: GatewayConfig): OpenAI => {
+      gatewayConfig = config;
+      return {
+        chat: { completions: { create: async () => completion(JSON.stringify({ findings: [] })) } }
+      } as unknown as OpenAI;
+    });
+    const result = await reviewChanges([
+      diff("src/changed.ts", [{ type: "added", lineNumber: 1, content: "const value = 1;" }])
+    ], {
+      env: {
+        VERIFY_LLM_API_KEY: "generic-gateway-test-key",
+        VERIFY_LLM_BASE_URL: "https://gateway.example/v1",
+        VERIFY_MODEL: "generic-gateway-model",
+        VERIFY_LLM_TIMEOUT_MS: "5000"
+      },
+      clientFactory
+    });
+
+    expect(result.review).toMatchObject({ status: "completed", model: "generic-gateway-model" });
+    expect(gatewayConfig).toMatchObject({
+      apiKey: "generic-gateway-test-key",
+      baseURL: "https://gateway.example/v1",
+      timeoutMs: 5000,
+      maxRetries: 0
+    });
+    expect(clientFactory).toHaveBeenCalledOnce();
   });
 
   it("keeps provider errors non-fatal and hides the raw provider error", async () => {

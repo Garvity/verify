@@ -4,7 +4,7 @@ The benchmark runner compares two or three explicit reviewer model IDs against l
 
 ## Prepare a run
 
-1. Store the review endpoint and key as `VERIFY_REVIEW_BASE_URL` and `VERIFY_REVIEW_API_KEY` in the project `.env`. Do not commit that file.
+1. Store credentials and endpoint in `.env` as `VERIFY_LLM_API_KEY` and `VERIFY_LLM_BASE_URL`, or override them with `VERIFY_REVIEW_*`. Do not commit that file.
 2. List model IDs exposed by the review gateway:
 
        pnpm dev models --review

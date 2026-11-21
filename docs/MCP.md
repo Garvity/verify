@@ -1,6 +1,6 @@
 # MCP integration
 
-`verify` exposes deterministic verification and the optional read-only AI reviewer over the Model Context Protocol (MCP). The server uses stdio, so it does not open a network port. Deterministic verification needs no LLM gateway or API key; AI review uses the dedicated `VERIFY_REVIEW_*` settings.
+`verify` exposes deterministic verification and the optional read-only AI reviewer over the Model Context Protocol (MCP). The server uses stdio, so it does not open a network port. Deterministic verification needs no LLM gateway or API key; AI review uses `VERIFY_REVIEW_*` overrides or reuses the existing `VERIFY_LLM_*` gateway settings.
 
 ## Start the server
 
@@ -40,7 +40,7 @@ Codex desktop shares MCP configuration with Codex CLI and the IDE extension. You
 6. In the composer, enter `/mcp` and confirm `verify` is listed.
 7. Call `verify_changes` with `base: "HEAD"`, then `get_findings` to confirm deterministic results. To request a combined report, call `review_changes` or call `verify_changes` with `aiReview: true`.
 
-No API key or OAuth sign-in is needed for deterministic verification. AI review requires `VERIFY_REVIEW_API_KEY` in the MCP process environment or project `.env`. For another machine or checkout, replace the project path with that checkout's absolute path.
+No API key or OAuth sign-in is needed for deterministic verification. AI review reads `VERIFY_REVIEW_API_KEY` or reuses `VERIFY_LLM_API_KEY` from the MCP process environment or project `.env`. For another machine or checkout, replace the project path with that checkout's absolute path.
 
 Codex can also read this equivalent user-level configuration from `~/.codex/config.toml`:
 
@@ -98,4 +98,4 @@ The repository includes an in-memory MCP client/server integration test. Run it 
 pnpm test:mcp
 ```
 
-For a client-level check, start `pnpm mcp:dev` through an MCP inspector or a coding harness and confirm that it lists all three tools and returns structured findings. No model credentials are needed for `verify_changes`; `review_changes` needs the dedicated review key.
+For a client-level check, start `pnpm mcp:dev` through an MCP inspector or a coding harness and confirm that it lists all three tools and returns structured findings. No model credentials are needed for `verify_changes`; `review_changes` needs the review key or the existing gateway key.

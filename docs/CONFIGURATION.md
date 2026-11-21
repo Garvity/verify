@@ -40,13 +40,13 @@ Copy `.env.example` to `.env` to configure AI review:
 
 ```dotenv
 VERIFY_REVIEW_API_KEY=
-VERIFY_REVIEW_BASE_URL=http://localhost:3001/v1
-VERIFY_REVIEW_MODEL=auto
-VERIFY_REVIEW_TIMEOUT_MS=60000
+VERIFY_REVIEW_BASE_URL=
+VERIFY_REVIEW_MODEL=
+VERIFY_REVIEW_TIMEOUT_MS=
 ```
 
-The API key is required only for `verify review`, MCP `review_changes`, or an explicit AI review option. Deterministic verification does not read or require it. Review uses one request with retries disabled and reports provider failures separately.
+The API key is required only for `verify review`, MCP `review_changes`, or an explicit AI review option. Deterministic verification does not read or require it. Each non-empty `VERIFY_REVIEW_*` value overrides its corresponding shared gateway setting; unset values reuse `VERIFY_LLM_API_KEY`, `VERIFY_LLM_BASE_URL`, and `VERIFY_LLM_TIMEOUT_MS`, while the model falls back to `VERIFY_MODEL` and then `auto`. Review uses one request with retries disabled and reports provider failures separately.
 
-The reusable gateway also retains `VERIFY_LLM_BASE_URL`, `VERIFY_LLM_API_KEY`, `VERIFY_MODEL`, `VERIFY_LLM_TIMEOUT_MS`, and `VERIFY_LLM_MAX_RETRIES` for model listing and gateway workflows. These settings are not silently substituted for the dedicated review key.
+The reusable gateway retains `VERIFY_LLM_BASE_URL`, `VERIFY_LLM_API_KEY`, `VERIFY_MODEL`, `VERIFY_LLM_TIMEOUT_MS`, and `VERIFY_LLM_MAX_RETRIES` for model listing and other gateway workflows. Review can use those settings by default or override them with `VERIFY_REVIEW_*` values. Its requests still have automatic retries disabled.
 
 The `.env` file is ignored by Git. Never commit provider credentials.

@@ -29,7 +29,7 @@ Use `--base` to compare against a Git reference. `--all` and `--base` cannot be 
 verify review [--base REF] [--checks] [--format terminal|json|markdown]
 ```
 
-`review` runs deterministic verification and requests the independent AI review. `--checks` also runs configured quality commands. The review requires `VERIFY_REVIEW_API_KEY`; if configuration or the provider is unavailable, deterministic results are still returned with an `aiReview` status explaining the outcome. AI findings are non-blocking and include confidence and validated evidence.
+`review` runs deterministic verification and requests the independent AI review. `--checks` also runs configured quality commands. The review uses `VERIFY_REVIEW_API_KEY` or reuses `VERIFY_LLM_API_KEY`; if configuration or the provider is unavailable, deterministic results are still returned with an `aiReview` status explaining the outcome. AI findings are non-blocking and include confidence and validated evidence.
 
 ## Model evaluation and reports
 
