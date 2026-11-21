@@ -43,12 +43,20 @@ describe("AI review evaluation", () => {
   it("loads reviewer labels and fingerprints task definitions and fixture inputs", async () => {
     const benchmark = await loadBenchmarkTasks(resolve("benchmarks/tasks"));
     expect(benchmark.tasks.map((task) => task.id)).toEqual([
+      "benign-profile-formatting",
       "inclusive-range",
       "truncate-text",
+      "go-role-check",
+      "js-command-injection",
+      "js-cross-site-scripting",
+      "js-path-traversal",
+      "python-sql-injection",
+      "python-weak-password-hash",
       "admin-only-delete"
     ]);
     for (const task of benchmark.tasks) {
-      expect(task.expectedFindings.length).toBeGreaterThan(0);
+      if (task.id === "benign-profile-formatting") expect(task.expectedFindings).toEqual([]);
+      else expect(task.expectedFindings.length).toBeGreaterThan(0);
       expect(task.fixtureSha256).toMatch(/^[a-f0-9]{64}$/);
       expect(task.definitionSha256).toMatch(/^[a-f0-9]{64}$/);
       for (const label of task.expectedFindings) {

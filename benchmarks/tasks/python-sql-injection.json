@@ -1,0 +1,14 @@
+{
+  "id": "python-sql-injection",
+  "description": "Review user lookup SQL construction for injection risks.",
+  "fixture": "fixtures/python-sql-injection",
+  "lineTolerance": 1,
+  "expectedFindings": [
+    {
+      "filePath": "src/repository.py",
+      "line": 2,
+      "severity": "high",
+      "category": "security"
+    }
+  ]
+}

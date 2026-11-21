@@ -1,0 +1,14 @@
+{
+  "id": "js-command-injection",
+  "description": "Review shell command construction that includes an external report name.",
+  "fixture": "fixtures/js-command-injection",
+  "lineTolerance": 1,
+  "expectedFindings": [
+    {
+      "filePath": "src/report.js",
+      "line": 4,
+      "severity": "critical",
+      "category": "security"
+    }
+  ]
+}

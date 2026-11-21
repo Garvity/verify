@@ -1,6 +1,6 @@
 # AI review evaluation
 
-The benchmark runner compares two or three explicit reviewer model IDs against labeled code changes. Each model/task pair receives its own immutable fixture copy. The reviewer sees only the fixture's changed lines, and the runner scores its structured findings against the task's expected findings.
+The benchmark runner compares two or three explicit reviewer model IDs against ten fixtures: nine labeled issues and one benign control. The fixtures cover JavaScript, Python, and Go, including SQL injection, path traversal, command injection, XSS, weak password hashing, authorization, correctness, and benign formatting. Each model/task pair receives its own immutable fixture copy. The reviewer sees only the fixture's changed lines, and the runner scores its structured findings against the task's expected findings.
 
 ## Prepare a run
 

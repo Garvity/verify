@@ -1,0 +1,7 @@
+{
+  "id": "benign-profile-formatting",
+  "description": "Review a null-safe display-name formatter for actionable defects or security issues.",
+  "fixture": "fixtures/benign-profile-formatting",
+  "lineTolerance": 1,
+  "expectedFindings": []
+}

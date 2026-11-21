@@ -1,0 +1,14 @@
+{
+  "id": "go-role-check",
+  "description": "Review role-based deletion authorization for least-privilege behavior.",
+  "fixture": "fixtures/go-role-check",
+  "lineTolerance": 1,
+  "expectedFindings": [
+    {
+      "filePath": "src/permissions.go",
+      "line": 4,
+      "severity": "high",
+      "category": "security"
+    }
+  ]
+}

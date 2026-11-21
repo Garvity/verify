@@ -1,0 +1,14 @@
+{
+  "id": "js-path-traversal",
+  "description": "Review how a user-supplied download path is combined with a trusted root.",
+  "fixture": "fixtures/js-path-traversal",
+  "lineTolerance": 1,
+  "expectedFindings": [
+    {
+      "filePath": "src/download.js",
+      "line": 5,
+      "severity": "high",
+      "category": "security"
+    }
+  ]
+}

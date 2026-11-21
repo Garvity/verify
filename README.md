@@ -136,7 +136,7 @@ Set `VERIFY_REVIEW_*` values only when review needs settings separate from the e
 
 ## Model evaluation
 
-The evaluation runner compares two or three explicit model IDs on labeled bug-fix, feature, and security changes. Each task/model run starts from a fresh immutable fixture copy. Reports measure finding precision, recall, F1, severity mismatch, latency, usage, and cost when explicit prices are provided.
+The evaluation runner compares two or three explicit model IDs against ten immutable fixtures across JavaScript, Python, and Go, including a benign control. Reports measure finding precision, recall, F1, severity mismatch, latency, usage, and cost when explicit prices are provided.
 
 ```sh
 pnpm dev eval --benchmark benchmarks/tasks --models model-a,model-b

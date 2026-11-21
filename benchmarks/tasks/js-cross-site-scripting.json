@@ -1,0 +1,14 @@
+{
+  "id": "js-cross-site-scripting",
+  "description": "Review rendering of an externally supplied profile field in the browser DOM.",
+  "fixture": "fixtures/js-cross-site-scripting",
+  "lineTolerance": 1,
+  "expectedFindings": [
+    {
+      "filePath": "src/profile.js",
+      "line": 2,
+      "severity": "high",
+      "category": "security"
+    }
+  ]
+}

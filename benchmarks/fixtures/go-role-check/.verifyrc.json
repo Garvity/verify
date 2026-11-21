@@ -1,0 +1,12 @@
+{
+  "security": {
+    "secrets": true,
+    "sensitiveFiles": true,
+    "dangerousPatterns": true
+  },
+  "quality": {
+    "tests": { "enabled": false },
+    "lint": { "enabled": false },
+    "typecheck": { "enabled": false }
+  }
+}
