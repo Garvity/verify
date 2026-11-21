@@ -16,6 +16,8 @@ The benchmark runner compares two or three explicit reviewer model IDs against t
 
 The command writes a JSON result and a Markdown comparison under `benchmarks/results/`. Each model/task pair starts from a separate temporary fixture repository, and the temporary workspaces are removed after the run.
 
+Partial results are still saved for diagnosis. The CLI returns exit code `3` if any model/task review fails or returns an invalid response; inspect the per-run status before comparing model scores.
+
 ## Task definitions
 
 Each JSON file in the task directory defines:

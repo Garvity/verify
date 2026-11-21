@@ -10,7 +10,7 @@ AI agents can produce plausible code quickly. Teams still need a repeatable way 
 - Runs enabled tests, lint, and typecheck commands through a configured command allowlist, without a shell, with time and output limits.
 - Applies protected-path policy and can compare findings with a saved baseline to distinguish introduced, persistent, and resolved issues.
 - Exposes one verification engine to developers, CI jobs, and MCP clients, so each interface uses the same rules and status logic.
-- Optionally sends redacted changed lines to an independent FreeLLMAPI reviewer. It returns validated findings and evidence without reading or modifying repository files.
+- Optionally sends screened, redacted changed lines to an independent FreeLLMAPI reviewer. It returns validated findings and evidence without reading or modifying repository files, and retries one time for transient gateway failures.
 - Keeps external coding harnesses in control: they investigate findings, make changes, and request re-verification through MCP.
 
 ## Example output
@@ -19,9 +19,13 @@ The first image shows a real CLI run against an isolated demo repository contain
 
 ![Verify CLI detecting seeded findings in an isolated demo repository](screenshots/scan-findings.png)
 
-The MCP adapter is exercised with an in-memory client/server integration test. This run passed all four MCP integration tests.
+The clean check runs the configured project tests and returns a passing report:
 
-![MCP integration test output showing four passing tests](screenshots/mcp-integration.png)
+![Verify CLI check passing with configured tests](screenshots/check-passed.png)
+
+The MCP adapter is exercised with in-memory client/server integration tests. The latest run passed all six MCP integration tests; a separate stdio client smoke test listed all three tools and called `verify_changes` successfully.
+
+![MCP integration test output showing six passing tests](screenshots/mcp-integration.png)
 
 ## Quick start
 
@@ -30,7 +34,7 @@ The MCP adapter is exercised with an in-memory client/server integration test. T
 ```sh
 pnpm install --frozen-lockfile
 pnpm build
-pnpm dev init                 # optional: create .verifyrc.json
+pnpm dev init                 # run once if the target repository lacks .verifyrc.json
 pnpm dev scan --base main     # inspect changes against main
 pnpm dev check --base main    # inspect changes and run enabled quality checks
 ```
@@ -42,7 +46,7 @@ pnpm dev scan --base main --format json > verify-result.json
 pnpm dev report --input verify-result.json --format markdown
 ```
 
-Exit codes are `0` for deterministic verification pass, `1` for blocking deterministic findings, `2` for invalid arguments or configuration, and `3` for an execution error. AI reviewer availability and findings are reported separately and never change deterministic pass/fail status.
+Exit codes are `0` for a pass, `1` for blocking deterministic findings, `2` for invalid arguments or configuration, and `3` for an execution error or an evaluation with incomplete model reviews. AI reviewer availability and findings are reported separately and do not change scan/check pass/fail status.
 
 ## Architecture
 
@@ -122,7 +126,7 @@ The MCP server uses stdio and does not open a network port. The HTTP API binds t
 
 ## Independent AI code reviewer
 
-The reviewer is read-only and runs only when requested. It sends redacted changed lines to FreeLLMAPI, asks for evidence-backed structured findings, then validates every reported location and excerpt against the submitted change. Sensitive paths such as `.env`, private keys, credentials files, and SSH material are omitted. Provider or response failures appear in `aiReview` metadata and leave deterministic status intact.
+The reviewer is read-only and runs only when requested. Before sending changes to FreeLLMAPI, Verify redacts known credential formats and high-entropy opaque values, omits sensitive files and credential-like path components, and skips the request if secret-like material remains. It asks for evidence-backed structured findings, then validates each reported location and excerpt against the submitted change. Provider failures appear in `aiReview` metadata and leave deterministic status intact. A transient provider failure is retried at most once; the request count is included in reports.
 
 ```sh
 cp .env.example .env
@@ -143,6 +147,10 @@ pnpm dev eval --benchmark benchmarks/tasks --models model-a,model-b
 ```
 
 See [evaluation methodology](docs/EVALUATION.md). The bundled tasks are reproducible examples, not a broad model leaderboard.
+
+One live FreeLLMAPI run on 2026-11-21 completed 7/10 reviews through `auto` (75.0% precision, 66.7% recall, 70.6% F1). The advertised `codestral` model returned provider errors on all 10 tasks. Failed requests count as missed findings; these figures describe one run and do not predict general model quality. The evaluator now exits with code `3` when any model/task review fails.
+
+![Ten-fixture live evaluation report with review success and finding metrics](screenshots/evaluation-output.png)
 
 ## Development and validation
 

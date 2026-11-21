@@ -2,6 +2,8 @@
 
 Run commands from the repository being checked. During development use `pnpm dev <command>`; after building or installing, use `verify <command>`.
 
+The target repository must contain a valid `.verifyrc.json`. Run `pnpm dev init` during development or `verify init` after installing the CLI when starting in a repository that does not have one; initialization refuses to overwrite an existing configuration.
+
 | Command | Purpose |
 | --- | --- |
 | init | Create `.verifyrc.json`; refuses to overwrite an existing file |
@@ -39,3 +41,5 @@ verify report --input RESULT.json [--format terminal|json|markdown] [--output FI
 ```
 
 Evaluation compares model reviewers against labeled, immutable benchmark changes. Use `verify models --review` to list IDs for that gateway. The report command accepts verification and evaluation result files.
+
+The evaluation command saves its JSON and Markdown reports even when some provider calls fail. It returns exit code `3` if any model/task review did not complete, so automation can distinguish a full evaluation from a partial report.
