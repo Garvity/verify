@@ -21,6 +21,8 @@ export interface AIReviewSummary {
   model?: string;
   servedModel?: string;
   provider?: string;
+  /** Number of provider requests made; includes a single bounded transient retry. */
+  attempts?: number;
   errorCode?:
     | "not_configured"
     | "invalid_config"
@@ -28,6 +30,7 @@ export interface AIReviewSummary {
     | "invalid_response"
     | "input_too_large"
     | "no_reviewable_changes"
+    | "sensitive_content_detected"
     | "full_scan_not_supported";
   durationMs: number;
 }

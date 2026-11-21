@@ -37,7 +37,8 @@ export function renderMarkdownReport(result: VerificationResult): string {
   if (result.aiReview) {
     const model = result.aiReview.model ? ` · model: \`${result.aiReview.model}\`` : "";
     const error = result.aiReview.errorCode ? ` · ${result.aiReview.errorCode}` : "";
-    lines.push("", `- **AI review:** ${result.aiReview.status}${model}${error}`);
+    const attempts = result.aiReview.attempts === undefined ? "" : ` · ${result.aiReview.attempts} request(s)`;
+    lines.push("", `- **AI review:** ${result.aiReview.status}${model}${error}${attempts}`);
   }
 
   lines.push("", "## Findings", "");

@@ -10,6 +10,7 @@ import type {
   ChatCompletion,
   ChatCompletionCreateParamsNonStreaming
 } from "openai/resources/chat/completions";
+import { APIConnectionError } from "openai";
 import type OpenAI from "openai";
 import { z } from "zod";
 
@@ -20,6 +21,8 @@ const MAX_FINDINGS = 20;
 const MAX_EVIDENCE_PER_FINDING = 3;
 const MAX_TIMEOUT_MS = 300_000;
 const DEFAULT_TIMEOUT_MS = 60_000;
+const MAX_PROVIDER_ATTEMPTS = 2;
+const RETRY_DELAY_MS = 200;
 
 const SENSITIVE_PATH_PATTERNS = [
   /(^|\/)\.env(?:\..*)?$/i,
@@ -33,20 +36,25 @@ const SENSITIVE_PATH_PATTERNS = [
 const PRIVATE_KEY_BEGIN = /-----BEGIN (?:(?:RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY-----|-----BEGIN PGP PRIVATE KEY BLOCK-----/i;
 const PRIVATE_KEY_END = /-----END (?:(?:RSA|EC|DSA|OPENSSH|ENCRYPTED) )?PRIVATE KEY-----|-----END PGP PRIVATE KEY BLOCK-----/i;
 
-const CREDENTIAL_ASSIGNMENT = /(\b(?:api[_-]?key|secret(?:[_-]?(?:key|token))?|client[_-]?secret|private[_-]?key|access[_-]?token|refresh[_-]?token|token|auth(?:orization)?|password|passwd|credential(?:s)?)\b\s*[:=]\s*)(?:(?:Bearer|Basic)\s+[^\s,;]+|"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;]+)/gi;
-const SECRET_PATTERNS = [
+const CREDENTIAL_ASSIGNMENT = /(\b(?:api[_-]?key|secret(?:[_-]?(?:key|token))?|client[_-]?secret|private[_-]?key|access[_-]?token|refresh[_-]?token|token|auth(?:orization)?|password|passwd|credential(?:s)?)\b\s*[:=]\s*)(?:(?:Bearer|Basic)\s+[^\s,;)}\]]+|"[^"\r\n]*"|'[^'\r\n]*'|\[REDACTED\]|[^\s,;)}\]]+)/gi;
+const OPAQUE_CANDIDATE = /[\w+\/.\-]{24,}/g;
+const GENERIC_PATH_SECRET = /^[A-Za-z0-9_-]{32,}$/;
+const KNOWN_CREDENTIAL_PATTERNS = [
   /\bAKIA[0-9A-Z]{16}\b/g,
   /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g,
   /\bsk-(?:or-v1-|proj-)?[A-Za-z0-9_-]{12,}\b/g,
   /\bglpat-[A-Za-z0-9_-]{20,}\b/g,
   /\bhms-[A-Za-z0-9_-]{12,}\b/g,
-  /\b[A-Za-z0-9_-]{32,}\b/g,
   /\bxox[baprs]-[A-Za-z0-9-]{12,}\b/g,
   /\bAIza[0-9A-Za-z_-]{30,}\b/g,
   /\bBearer\s+[A-Za-z0-9._~+/=-]{8,}/gi,
   /\bBasic\s+[A-Za-z0-9+/=]{12,}/gi,
-  /(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{40,}={0,2}(?![A-Za-z0-9+/])/g,
   /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b/g
+];
+const SECRET_PATTERNS = [
+  ...KNOWN_CREDENTIAL_PATTERNS,
+  /\b[A-Za-z0-9_-]{32,}\b/g,
+  /(?<![A-Za-z0-9+/])[A-Za-z0-9+/]{40,}={0,2}(?![A-Za-z0-9+/])/g
 ];
 
 const EvidenceSchema = z.object({
@@ -82,6 +90,8 @@ export interface ReviewChangesOptions {
   model?: string;
   /** Injectable client factory for offline gateway configuration tests. */
   clientFactory?: (config: GatewayConfig) => OpenAI;
+  /** Injectable pause for retry tests. */
+  wait?: (durationMs: number) => Promise<void>;
   complete?: (request: ChatCompletionCreateParamsNonStreaming) => Promise<ChatCompletion>;
 }
 
@@ -113,7 +123,7 @@ function isSensitivePath(filePath: string): boolean {
   return SENSITIVE_PATH_PATTERNS.some((pattern) => pattern.test(filePath));
 }
 
-function redactLine(content: string): string {
+function redactKnownSecrets(content: string): string {
   CREDENTIAL_ASSIGNMENT.lastIndex = 0;
   let redacted = content.replace(CREDENTIAL_ASSIGNMENT, (_match, prefix: string) => `${prefix}[REDACTED]`);
   for (const pattern of SECRET_PATTERNS) {
@@ -121,6 +131,70 @@ function redactLine(content: string): string {
     redacted = redacted.replace(pattern, "[REDACTED]");
   }
   return redacted;
+}
+
+function redactLine(content: string): string {
+  let redacted = redactKnownSecrets(content);
+  OPAQUE_CANDIDATE.lastIndex = 0;
+  redacted = redacted.replace(OPAQUE_CANDIDATE, (candidate) =>
+    isDottedMemberExpression(candidate) || !isHighEntropyCandidate(candidate) ? candidate : "[REDACTED]"
+  );
+  return redacted;
+}
+
+function isDottedMemberExpression(value: string): boolean {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)+$/.test(value);
+}
+
+function isHighEntropyCandidate(value: string): boolean {
+  const alphabet = new Set(value);
+  const characterClasses = Number(/[a-z]/.test(value)) +
+    Number(/[A-Z]/.test(value)) +
+    Number(/[0-9]/.test(value)) +
+    Number(/[_+/.=-]/.test(value));
+  if (value.length < 24 || characterClasses < 3 || alphabet.size < 12) return false;
+
+  const counts = new Map<string, number>();
+  for (const character of value) counts.set(character, (counts.get(character) ?? 0) + 1);
+  const entropy = [...counts.values()].reduce((sum, count) => {
+    const probability = count / value.length;
+    return sum - probability * Math.log2(probability);
+  }, 0);
+  return entropy >= 3.5;
+}
+
+function isHighEntropyPathCandidate(value: string): boolean {
+  if (!isHighEntropyCandidate(value)) return false;
+  const alphanumeric = value.replace(/[^A-Za-z0-9]/g, "");
+  let transitions = 0;
+  for (let index = 1; index < alphanumeric.length; index++) {
+    const previous = alphanumeric[index - 1]!;
+    const current = alphanumeric[index]!;
+    const previousClass = /[a-z]/.test(previous) ? "lower" : /[A-Z]/.test(previous) ? "upper" : "digit";
+    const currentClass = /[a-z]/.test(current) ? "lower" : /[A-Z]/.test(current) ? "upper" : "digit";
+    if (previousClass !== currentClass) transitions++;
+  }
+  return transitions >= 8;
+}
+
+function isGenericPathSecret(value: string): boolean {
+  return GENERIC_PATH_SECRET.test(value) &&
+    (/^[0-9a-f]{32,}$/i.test(value) || isHighEntropyPathCandidate(value));
+}
+
+function hasOpaqueSecretLikePathComponent(filePath: string): boolean {
+  const components = filePath.split(/[\\/]/);
+  return components.some((component, index) => {
+    const isFilename = index === components.length - 1;
+    const extensionSeparator = isFilename ? component.lastIndexOf(".") : -1;
+    const stem = extensionSeparator > 0 ? component.slice(0, extensionSeparator) : component;
+    const suffix = extensionSeparator > 0 ? component.slice(extensionSeparator + 1) : "";
+    const parts = isFilename ? [stem, suffix] : [component];
+    const candidates = parts.flatMap((part) => [part, ...part.split(/[.-]+/).filter(Boolean)]);
+    return candidates.some((segment) =>
+      isGenericPathSecret(segment) || isHighEntropyPathCandidate(segment)
+    );
+  });
 }
 
 function changedLines(file: ParsedFileDiff): Array<{ type: "added" | "removed"; lineNumber: number; content: string }> {
@@ -135,7 +209,13 @@ function sanitizeFiles(files: ParsedFileDiff[]): ReviewableFile[] {
 
   for (const file of files) {
     const filePath = file.newPath ?? file.oldPath;
-    if (!filePath || file.isBinary || isSensitivePath(filePath) || hasSecretLikeText(filePath)) continue;
+    if (
+      !filePath ||
+      file.isBinary ||
+      isSensitivePath(filePath) ||
+      hasKnownSecretLikeText(filePath) ||
+      hasOpaqueSecretLikePathComponent(filePath)
+    ) continue;
 
     const changes = changedLines(file);
     if (changes.length === 0) continue;
@@ -234,7 +314,9 @@ export async function listReviewModels(
   env: Record<string, string | undefined> = process.env
 ): Promise<AvailableModel[]> {
   const config = readReviewConfig(env);
-  if (config === "not_configured") throw new Error("Set VERIFY_REVIEW_API_KEY to list review models.");
+  if (config === "not_configured") {
+    throw new Error("Set VERIFY_REVIEW_API_KEY or VERIFY_LLM_API_KEY to list review models.");
+  }
   const page = await createLlmClient(config.gateway).models.list();
   return page.data
     .map((model) => ({ id: model.id, ownedBy: model.owned_by }))
@@ -245,17 +327,32 @@ function emptyUsage(): TokenUsageSummary {
   return { ...EMPTY_USAGE };
 }
 
+function isRetryableProviderError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  if (error instanceof APIConnectionError) return true;
+  const candidate = error as { status?: unknown; code?: unknown; name?: unknown };
+  const status = typeof candidate.status === "number" ? candidate.status : undefined;
+  if (status !== undefined) return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+
+  const name = typeof candidate.name === "string" ? candidate.name : "";
+  const code = typeof candidate.code === "string" ? candidate.code : "";
+  return /APIConnection(?:Timeout)?Error|TimeoutError/.test(name) ||
+    ["ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "ECONNREFUSED"].includes(code);
+}
+
 function result(
   startedAt: number,
   status: AIReviewSummary["status"],
   errorCode?: AIReviewSummary["errorCode"],
-  model?: string
+  model?: string,
+  attempts = 0
 ): ReviewChangesResult {
   return {
     findings: [],
     review: {
       status,
       durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+      attempts,
       ...(model ? { model } : {}),
       ...(errorCode ? { errorCode } : {})
     },
@@ -284,19 +381,25 @@ function buildMessages(files: ReviewableFile[]): ChatCompletionCreateParamsNonSt
   ];
 }
 
-function hasSecretLikeText(value: string): boolean {
+function hasKnownSecretLikeText(value: string): boolean {
   if (PRIVATE_KEY_BEGIN.test(value) || PRIVATE_KEY_END.test(value)) return true;
-  return redactLine(value) !== value;
+  CREDENTIAL_ASSIGNMENT.lastIndex = 0;
+  const assignmentRedacted = value.replace(CREDENTIAL_ASSIGNMENT, (_match, prefix: string) => `${prefix}[REDACTED]`);
+  if (assignmentRedacted !== value) return true;
+  return KNOWN_CREDENTIAL_PATTERNS.some((pattern) => {
+    pattern.lastIndex = 0;
+    return pattern.test(value);
+  });
 }
 
 function validateNoSecretEcho(payload: z.infer<typeof ReviewResponseSchema>): boolean {
   for (const finding of payload.findings) {
-    if (hasSecretLikeText(finding.ruleId) || hasSecretLikeText(finding.message)) return false;
+    if (hasKnownSecretLikeText(finding.ruleId) || hasKnownSecretLikeText(finding.message)) return false;
     for (const evidence of finding.evidence) {
       if (
-        hasSecretLikeText(evidence.filePath) ||
-        hasSecretLikeText(evidence.snippet) ||
-        hasSecretLikeText(evidence.explanation)
+        hasKnownSecretLikeText(evidence.filePath) ||
+        hasKnownSecretLikeText(evidence.snippet) ||
+        hasKnownSecretLikeText(evidence.explanation)
       ) return false;
     }
   }
@@ -355,6 +458,13 @@ export async function reviewChanges(
   if (sanitizedFiles.length === 0) {
     return result(startedAt, "skipped", "no_reviewable_changes");
   }
+  if (sanitizedFiles.some((file) =>
+    hasKnownSecretLikeText(file.filePath) ||
+    hasOpaqueSecretLikePathComponent(file.filePath) ||
+    file.changes.some((change) => hasKnownSecretLikeText(change.content))
+  )) {
+    return result(startedAt, "skipped", "sensitive_content_detected");
+  }
 
   const requestBytes = Buffer.byteLength(JSON.stringify(sanitizedFiles), "utf8");
   if (requestBytes > MAX_INPUT_BYTES) {
@@ -381,52 +491,64 @@ export async function reviewChanges(
     return result(startedAt, "unavailable", "not_configured");
   }
 
-  let response: ChatCompletion;
-  try {
-    const request: ChatCompletionCreateParamsNonStreaming = {
-      model: config.model,
-      messages: buildMessages(sanitizedFiles),
-      temperature: 0,
-      max_tokens: 3500,
-      response_format: { type: "json_object" }
-    };
-    const complete = options.complete ?? ((params) =>
-      (options.clientFactory ?? createLlmClient)(config.gateway).chat.completions.create(params)
-    );
-    response = await complete(request);
-  } catch {
-    return result(startedAt, "failed", "provider_error", config.model);
+  const request: ChatCompletionCreateParamsNonStreaming = {
+    model: config.model,
+    messages: buildMessages(sanitizedFiles),
+    temperature: 0,
+    max_tokens: 3500,
+    response_format: { type: "json_object" }
+  };
+  const client = options.complete
+    ? undefined
+    : (options.clientFactory ?? createLlmClient)(config.gateway);
+  const complete = options.complete ?? ((params) =>
+    client!.chat.completions.create(params)
+  );
+  let response: ChatCompletion | undefined;
+  let attempts = 0;
+  while (attempts < MAX_PROVIDER_ATTEMPTS) {
+    attempts++;
+    try {
+      response = await complete(request);
+      break;
+    } catch (error) {
+      if (attempts >= MAX_PROVIDER_ATTEMPTS || !isRetryableProviderError(error)) {
+        return result(startedAt, "failed", "provider_error", config.model, attempts);
+      }
+      await (options.wait ?? ((durationMs) => new Promise<void>((resolve) => setTimeout(resolve, durationMs))))(RETRY_DELAY_MS);
+    }
   }
+  if (!response) return result(startedAt, "failed", "provider_error", config.model, attempts);
 
   const text = response.choices[0]?.message.content;
   if (typeof text !== "string") {
-    return result(startedAt, "failed", "invalid_response", config.model);
+    return result(startedAt, "failed", "invalid_response", config.model, attempts);
   }
 
   let parsedJson: unknown;
   try {
     parsedJson = JSON.parse(text);
   } catch {
-    return result(startedAt, "failed", "invalid_response", config.model);
+    return result(startedAt, "failed", "invalid_response", config.model, attempts);
   }
   const parsed = ReviewResponseSchema.safeParse(parsedJson);
   if (!parsed.success || !validateNoSecretEcho(parsed.data)) {
-    return result(startedAt, "failed", "invalid_response", config.model);
+    return result(startedAt, "failed", "invalid_response", config.model, attempts);
   }
 
   const findings = mapFindings(parsed.data, sanitizedFiles);
   if (!findings) {
-    return result(startedAt, "failed", "invalid_response", config.model);
+    return result(startedAt, "failed", "invalid_response", config.model, attempts);
   }
 
   const metadata = extractResponseMetadata(response, config.model);
   if (
     !metadata.servedModel ||
     metadata.servedModel.length > 256 ||
-    hasSecretLikeText(metadata.servedModel) ||
-    (metadata.provider !== undefined && (metadata.provider.length > 256 || hasSecretLikeText(metadata.provider)))
+    hasKnownSecretLikeText(metadata.servedModel) ||
+    (metadata.provider !== undefined && (metadata.provider.length > 256 || hasKnownSecretLikeText(metadata.provider)))
   ) {
-    return result(startedAt, "failed", "invalid_response", config.model);
+    return result(startedAt, "failed", "invalid_response", config.model, attempts);
   }
   return {
     findings,
@@ -434,6 +556,7 @@ export async function reviewChanges(
       status: "completed",
       model: config.model,
       servedModel: metadata.servedModel,
+      attempts,
       ...(metadata.provider ? { provider: metadata.provider } : {}),
       durationMs: Math.max(0, Math.round(performance.now() - startedAt))
     },

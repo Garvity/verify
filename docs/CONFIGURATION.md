@@ -45,8 +45,8 @@ VERIFY_REVIEW_MODEL=
 VERIFY_REVIEW_TIMEOUT_MS=
 ```
 
-The API key is required only for `verify review`, MCP `review_changes`, or an explicit AI review option. Deterministic verification does not read or require it. Each non-empty `VERIFY_REVIEW_*` value overrides its corresponding shared gateway setting; unset values reuse `VERIFY_LLM_API_KEY`, `VERIFY_LLM_BASE_URL`, and `VERIFY_LLM_TIMEOUT_MS`, while the model falls back to `VERIFY_MODEL` and then `auto`. Review uses one request with retries disabled and reports provider failures separately.
+The API key is required only for `verify review`, MCP `review_changes`, or an explicit AI review option. Deterministic verification does not read or require it. Each non-empty `VERIFY_REVIEW_*` value overrides its corresponding shared gateway setting; unset values reuse `VERIFY_LLM_API_KEY`, `VERIFY_LLM_BASE_URL`, and `VERIFY_LLM_TIMEOUT_MS`, while the model falls back to `VERIFY_MODEL` and then `auto`. Review makes at most two requests, retrying only once for transient connection, timeout, rate-limit, and server errors, and reports the attempt count separately.
 
-The reusable gateway retains `VERIFY_LLM_BASE_URL`, `VERIFY_LLM_API_KEY`, `VERIFY_MODEL`, `VERIFY_LLM_TIMEOUT_MS`, and `VERIFY_LLM_MAX_RETRIES` for model listing and other gateway workflows. Review can use those settings by default or override them with `VERIFY_REVIEW_*` values. Its requests still have automatic retries disabled.
+The reusable gateway retains `VERIFY_LLM_BASE_URL`, `VERIFY_LLM_API_KEY`, `VERIFY_MODEL`, `VERIFY_LLM_TIMEOUT_MS`, and `VERIFY_LLM_MAX_RETRIES` for model listing and other gateway workflows. Review can use those settings by default or override them with `VERIFY_REVIEW_*` values. Review retry behavior is bounded independently of the gateway's general retry setting.
 
 The `.env` file is ignored by Git. Never commit provider credentials.

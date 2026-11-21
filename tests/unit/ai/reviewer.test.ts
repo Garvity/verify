@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { APIConnectionError, APIConnectionTimeoutError } from "openai";
 import type {
   ChatCompletion,
   ChatCompletionCreateParamsNonStreaming
@@ -113,6 +114,15 @@ describe("read-only AI code reviewer", () => {
     expect(complete.mock.calls[0]?.[0].response_format).toEqual({ type: "json_object" });
   });
 
+  it("accepts a provider model ID with ordinary identifier text", async () => {
+    const complete = vi.fn(async () => completion(JSON.stringify({ findings: [] }), "vendor/long-review-model-v2-1-small-beta-2026"));
+    const result = await reviewChanges([
+      diff("src/changed.ts", [{ type: "added", lineNumber: 1, content: "const value = 1;" }])
+    ], { env: reviewEnv, complete });
+
+    expect(result.review).toMatchObject({ status: "completed", servedModel: "vendor/long-review-model-v2-1-small-beta-2026" });
+  });
+
   it("redacts credential patterns and PEM blocks before calling the model", async () => {
     const secrets = [
       "ghp_123456789012345678901234",
@@ -120,7 +130,8 @@ describe("read-only AI code reviewer", () => {
       "hms-012345678901234567890123",
       "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.signaturevalue",
       "opaque-bearer-token-value",
-      "private-key-body-material"
+      "private-key-body-material",
+      "A7bC9dE2fG4hJ6kL8mN3pQ5r"
     ];
     const lines: ChangedLine[] = [
       { type: "added", lineNumber: 1, content: `const githubToken = "${secrets[0]}";` },
@@ -131,7 +142,8 @@ describe("read-only AI code reviewer", () => {
       { type: "added", lineNumber: 6, content: "-----BEGIN PRIVATE KEY-----" },
       { type: "added", lineNumber: 7, content: secrets[5]! },
       { type: "added", lineNumber: 8, content: "-----END PRIVATE KEY-----" },
-      { type: "removed", lineNumber: 9, content: "password = \"old-removed-password-value\"" }
+      { type: "removed", lineNumber: 9, content: "password = \"old-removed-password-value\"" },
+      { type: "added", lineNumber: 10, content: `const opaque = "${secrets[6]}";` }
     ];
     const complete = vi.fn(async (_request: ChatCompletionCreateParamsNonStreaming) =>
       completion(JSON.stringify({ findings: [] }))
@@ -147,6 +159,55 @@ describe("read-only AI code reviewer", () => {
     expect(sent).toContain("Authorization");
   });
 
+  it("keeps already-redacted credential values in object and assignment syntax", async () => {
+    const complete = vi.fn(async (_request: ChatCompletionCreateParamsNonStreaming) =>
+      completion(JSON.stringify({ findings: [] }))
+    );
+    const result = await reviewChanges([
+      diff("src/fixtures.ts", [
+        { type: "added", lineNumber: 1, content: 'login({password: "***REDACTED_SECRET_ASSIGNMENT***"});' },
+        { type: "added", lineNumber: 2, content: 'password = "***REDACTED_SECRET_ASSIGNMENT***";' }
+      ])
+    ], { env: reviewEnv, complete });
+
+    const sent = requestBody(complete.mock.calls[0]![0]);
+    expect(result.review.status).toBe("completed");
+    expect(sent).toContain("login({password: [REDACTED]});");
+    expect(sent).toContain("password = [REDACTED];");
+  });
+
+  it("redacts short high-entropy opaque values before transmission", async () => {
+    const opaqueValue = "A7bC9dE2fG4hJ6kL8mN3pQ5r";
+    const complete = vi.fn(async (_request: ChatCompletionCreateParamsNonStreaming) =>
+      completion(JSON.stringify({ findings: [] }))
+    );
+
+    await reviewChanges([
+      diff("src/config.ts", [{ type: "added", lineNumber: 1, content: `const opaque = "${opaqueValue}";` }])
+    ], { env: reviewEnv, complete });
+
+    const sent = requestBody(complete.mock.calls[0]![0]);
+    expect(sent).not.toContain(opaqueValue);
+    expect(sent).toContain("[REDACTED]");
+  });
+
+  it.each([
+    "document.body.innerHTML = request.query.userProvidedHtml;",
+    "document.body.innerHTML=request.query.userProvidedHtml;"
+  ])("preserves ordinary dotted member expressions during entropy redaction: %s", async (source) => {
+    const complete = vi.fn(async (_request: ChatCompletionCreateParamsNonStreaming) =>
+      completion(JSON.stringify({ findings: [] }))
+    );
+
+    await reviewChanges([
+      diff("src/view.ts", [{ type: "added", lineNumber: 1, content: source }])
+    ], { env: reviewEnv, complete });
+
+    const sent = requestBody(complete.mock.calls[0]![0]);
+    expect(sent).toContain(source);
+    expect(sent).not.toContain("[REDACTED]");
+  });
+
   it("omits dotenv, credential, key, and SSH files while retaining example templates", async () => {
     const files = [
       diff(".env.local", [{ type: "added", lineNumber: 1, content: "PRIVATE=value" }]),
@@ -155,6 +216,15 @@ describe("read-only AI code reviewer", () => {
       diff("keys/deploy.p8", [{ type: "added", lineNumber: 1, content: "private material" }]),
       diff(".ssh/id_ed25519", [{ type: "added", lineNumber: 1, content: "private material" }]),
       diff(`src/${"x".repeat(40)}/module.ts`, [{ type: "added", lineNumber: 1, content: "private material" }]),
+      diff("src/A7bC9dE2fG4hJ6kL8mN3pQ5rS8tU2vW4/handler.ts", [{ type: "added", lineNumber: 1, content: "const safe = true;" }]),
+      diff("src/A7bC9dE2-fG4hJ6kL-8mN3pQ5r-S8tU2vW4/handler.ts", [{ type: "added", lineNumber: 1, content: "const safe = true;" }]),
+      diff("src/cache.A7bC9dE2fG4hJ6kL8mN3pQ5rS8tU2vW4", [{ type: "added", lineNumber: 1, content: "const safe = true;" }]),
+      diff("src/6f19d3a80e742b95c17a04d8e6932fb1/handler.ts", [{ type: "added", lineNumber: 1, content: "const safe = true;" }]),
+      diff("src/components/UserProfile.tsx", [{ type: "added", lineNumber: 1, content: "export function UserProfile() {}" }]),
+      diff("src/components/UserAuthenticationController.tsx", [{ type: "added", lineNumber: 1, content: "export function UserAuthenticationController() {}" }]),
+      diff("src/components/UserAuthenticationController2026.tsx", [{ type: "added", lineNumber: 1, content: "export function UserAuthenticationController2026() {}" }]),
+      diff("src/user-authentication-v2-test.ts", [{ type: "added", lineNumber: 1, content: "export const valid = true;" }]),
+      diff("src/user_authentication_controller_for_service.ts", [{ type: "added", lineNumber: 1, content: "export const valid = true;" }]),
       diff(".env.example", [{ type: "added", lineNumber: 2, content: "VERIFY_REVIEW_API_KEY=\"\"" }]),
       diff("src/safe.ts", [{ type: "added", lineNumber: 4, content: "export const safe = true;" }])
     ];
@@ -168,12 +238,21 @@ describe("read-only AI code reviewer", () => {
     expect(result.review.status).toBe("completed");
     expect(sent).toContain(".env.example");
     expect(sent).toContain("src/safe.ts");
+    expect(sent).toContain("src/components/UserProfile.tsx");
     expect(sent).not.toContain(".env.local");
     expect(sent).not.toContain("credentials.json");
     expect(sent).not.toContain("deploy.pem");
     expect(sent).not.toContain("deploy.p8");
     expect(sent).not.toContain(".ssh/id_ed25519");
-    expect(sent).not.toContain("x".repeat(40));
+    expect(sent).not.toContain("A7bC9dE2fG4hJ6kL8mN3pQ5rS8tU2vW4");
+    expect(sent).not.toContain("A7bC9dE2-fG4hJ6kL-8mN3pQ5r-S8tU2vW4");
+    expect(sent).not.toContain("cache.A7bC9dE2fG4hJ6kL8mN3pQ5rS8tU2vW4");
+    expect(sent).not.toContain("6f19d3a80e742b95c17a04d8e6932fb1");
+    expect(sent).toContain("x".repeat(40));
+    expect(sent).toContain("UserAuthenticationController.tsx");
+    expect(sent).toContain("UserAuthenticationController2026.tsx");
+    expect(sent).toContain("user-authentication-v2-test.ts");
+    expect(sent).toContain("user_authentication_controller_for_service.ts");
   });
 
   it("redacts encrypted and PGP private key blocks", async () => {
@@ -195,6 +274,16 @@ describe("read-only AI code reviewer", () => {
     expect(sent).not.toContain("short-encrypted-key-material");
     expect(sent).not.toContain("short-pgp-key-material");
     expect(sent.match(/\[REDACTED PRIVATE KEY MATERIAL\]/g)).toHaveLength(6);
+  });
+
+  it("fails closed when secret-like key material remains after sanitization", async () => {
+    const complete = vi.fn();
+    const result = await reviewChanges([
+      diff("src/key-material.ts", [{ type: "added", lineNumber: 1, content: "-----END PRIVATE KEY-----" }])
+    ], { env: reviewEnv, complete });
+
+    expect(result.review).toMatchObject({ status: "skipped", errorCode: "sensitive_content_detected", attempts: 0 });
+    expect(complete).not.toHaveBeenCalled();
   });
 
   it("rejects malformed schemas and evidence that does not match submitted lines", async () => {
@@ -285,10 +374,61 @@ describe("read-only AI code reviewer", () => {
       diff("src/changed.ts", [{ type: "added", lineNumber: 1, content: "const value = 1;" }])
     ], { env: reviewEnv, complete });
 
-    expect(result.review).toMatchObject({ status: "failed", errorCode: "provider_error", model: "review-default" });
+    expect(result.review).toMatchObject({ status: "failed", errorCode: "provider_error", model: "review-default", attempts: 1 });
     expect(JSON.stringify(result)).not.toContain("review-test-key");
     expect(result.usage.totalTokens).toBeNull();
     expect(result.review.provider).toBeUndefined();
+  });
+
+  it("retries one transient gateway failure and records both attempts", async () => {
+    let calls = 0;
+    const wait = vi.fn(async () => undefined);
+    const complete = vi.fn(async () => {
+      calls++;
+      if (calls === 1) throw Object.assign(new Error("temporary gateway failure"), { status: 503 });
+      return completion(JSON.stringify({ findings: [] }));
+    });
+
+    const result = await reviewChanges([
+      diff("src/changed.ts", [{ type: "added", lineNumber: 1, content: "const value = 1;" }])
+    ], { env: reviewEnv, complete, wait });
+
+    expect(result.review).toMatchObject({ status: "completed", attempts: 2 });
+    expect(complete).toHaveBeenCalledTimes(2);
+    expect(wait).toHaveBeenCalledOnce();
+    expect(wait).toHaveBeenCalledWith(200);
+  });
+
+  it.each([
+    ["connection", () => new APIConnectionError({ message: "network unavailable" })],
+    ["timeout", () => new APIConnectionTimeoutError({ message: "request timed out" })]
+  ] as const)("retries OpenAI SDK %s errors", async (_kind, createError) => {
+    let calls = 0;
+    const complete = vi.fn(async () => {
+      calls++;
+      if (calls === 1) throw createError();
+      return completion(JSON.stringify({ findings: [] }));
+    });
+    const result = await reviewChanges([
+      diff("src/changed.ts", [{ type: "added", lineNumber: 1, content: "const value = 1;" }])
+    ], { env: reviewEnv, complete, wait: async () => undefined });
+
+    expect(result.review).toMatchObject({ status: "completed", attempts: 2 });
+    expect(complete).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry a non-transient provider error", async () => {
+    const complete = vi.fn(async () => {
+      throw Object.assign(new Error("invalid request"), { status: 400 });
+    });
+    const wait = vi.fn(async () => undefined);
+    const result = await reviewChanges([
+      diff("src/changed.ts", [{ type: "added", lineNumber: 1, content: "const value = 1;" }])
+    ], { env: reviewEnv, complete, wait });
+
+    expect(result.review).toMatchObject({ status: "failed", errorCode: "provider_error", attempts: 1 });
+    expect(complete).toHaveBeenCalledOnce();
+    expect(wait).not.toHaveBeenCalled();
   });
 
   it("skips empty and sensitive-only changes without loading provider credentials", async () => {

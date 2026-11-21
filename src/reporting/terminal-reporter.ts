@@ -46,7 +46,8 @@ export function renderTerminalReport(result: VerificationResult): string {
   if (result.aiReview) {
     const requestedModel = result.aiReview.model ? ` (${result.aiReview.model})` : "";
     const failure = result.aiReview.errorCode ? ` · ${result.aiReview.errorCode}` : "";
-    lines.push("", `AI review: ${result.aiReview.status}${requestedModel}${failure}`);
+    const attempts = result.aiReview.attempts === undefined ? "" : ` · ${result.aiReview.attempts} request(s)`;
+    lines.push("", `AI review: ${result.aiReview.status}${requestedModel}${failure}${attempts}`);
   }
 
   if (result.findings.length) {

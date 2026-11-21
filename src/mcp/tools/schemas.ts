@@ -26,6 +26,7 @@ export const aiReviewOutputSchema = z.object({
   model: z.string().optional(),
   servedModel: z.string().optional(),
   provider: z.string().optional(),
+  attempts: z.number().int().nonnegative().optional(),
   errorCode: z.enum([
     "not_configured",
     "invalid_config",
@@ -33,6 +34,7 @@ export const aiReviewOutputSchema = z.object({
     "invalid_response",
     "input_too_large",
     "no_reviewable_changes",
+    "sensitive_content_detected",
     "full_scan_not_supported"
   ]).optional(),
   durationMs: z.number()

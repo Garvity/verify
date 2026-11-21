@@ -13,7 +13,7 @@ VERIFY_REVIEW_MODEL=
 VERIFY_REVIEW_TIMEOUT_MS=
 ```
 
-Review-specific settings take precedence. If omitted, the API key, base URL, and timeout reuse `VERIFY_LLM_API_KEY`, `VERIFY_LLM_BASE_URL`, and `VERIFY_LLM_TIMEOUT_MS`; the model uses `VERIFY_MODEL` and then defaults to `auto`. This lets an existing FreeLLMAPI gateway configuration work without copying its key, while still allowing review to use separate credentials or routing. The reviewer makes one completion request with automatic SDK retries disabled.
+Review-specific settings take precedence. If omitted, the API key, base URL, and timeout reuse `VERIFY_LLM_API_KEY`, `VERIFY_LLM_BASE_URL`, and `VERIFY_LLM_TIMEOUT_MS`; the model uses `VERIFY_MODEL` and then defaults to `auto`. The reviewer makes at most two requests, retrying only once for connection failures, timeouts, rate limits, and transient 408/409/425/5xx responses. Other provider errors and invalid responses are returned without retry.
 
 Use `pnpm dev models --review` to list model IDs exposed to the review gateway. The `auto` routing alias may not appear in the provider's catalog.
 
@@ -45,7 +45,7 @@ The reviewer has no file-reading or file-writing tools. Its strict JSON response
 
 Provider errors and malformed or unsupported output return a generic status code such as `provider_error` or `invalid_response`. Raw provider errors, keys, and unvalidated model output are not copied into reports.
 
-Pattern-based secret redaction cannot identify every arbitrary credential. Do not treat the reviewer as a secret-scanning boundary or send changes that should not leave the machine. Deterministic checks remain available without the AI settings.
+Before transmission, Verify redacts known credential formats and high-entropy opaque values, then checks the sanitized payload again and skips the AI request if a secret-like value remains. This reduces accidental disclosure, but custom or encoded credentials can still evade local patterns. For sensitive repositories, add a dedicated local scanner such as Gitleaks or disable external review for those changes. Deterministic checks remain available without the AI settings.
 
 ## Reusable gateway and evaluation
 
