@@ -31,8 +31,5 @@
     "allowedCommands": [
         ["pnpm"]
     ]
-  },
-  "agent": {
-    "maxRetries": 3
   }
 }

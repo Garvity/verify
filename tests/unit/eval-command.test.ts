@@ -54,7 +54,10 @@ describe("evaluation CLI validation", () => {
         environment: { node: "v22", platform: "darwin", architecture: "arm64" },
         taskInputs: [],
         runs: [],
-        metrics: [{ model: "model-a", runs: 1 }, { model: "model-b", runs: 1 }]
+        metrics: [
+          { model: "model-a", runs: 1, successfulReviews: 1 },
+          { model: "model-b", runs: 1, successfulReviews: 1 }
+        ]
       };
       mocks.loadBenchmarkTasks.mockResolvedValue(benchmark);
       mocks.runEvaluation.mockResolvedValue(result);
@@ -74,6 +77,40 @@ describe("evaluation CLI validation", () => {
       expect(stdout).toHaveBeenCalledWith(expect.stringContaining("| Model | Precision | Recall | F1 |"));
       await expect(readFile(join(directory, "review-run.json"), "utf8")).resolves.toContain('"requestedModels"');
       await expect(readFile(join(directory, "review-run.md"), "utf8")).resolves.toContain("Precision and recall details");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("returns an execution error when any model review failed", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "verify-eval-command-failure-test-"));
+    try {
+      const benchmark = { root: directory, tasks: [{ id: "review-task" }] };
+      const result = {
+        schemaVersion: 1,
+        id: "run-incomplete",
+        createdAt: "2026-11-20T00:00:00.000Z",
+        benchmarkRoot: directory,
+        requestedModels: ["model-a", "model-b"],
+        environment: { node: "v22", platform: "darwin", architecture: "arm64" },
+        taskInputs: [],
+        runs: [],
+        metrics: [
+          { model: "model-a", runs: 1, successfulReviews: 1 },
+          { model: "model-b", runs: 1, successfulReviews: 0 }
+        ]
+      };
+      mocks.loadBenchmarkTasks.mockResolvedValue(benchmark);
+      mocks.runEvaluation.mockResolvedValue(result);
+      mocks.renderEvaluationMarkdown.mockReturnValue("# Partial evaluation");
+      mocks.metricsAsMarkdownTable.mockReturnValue("| Model | Reviews passed | Recall | F1 |");
+      vi.spyOn(process.stdout, "write").mockImplementation((() => true) as typeof process.stdout.write);
+
+      await expect(evalCommand([
+        "--benchmark", join(directory, "tasks"),
+        "--models", "model-a,model-b",
+        "--output", join(directory, "partial-run")
+      ])).resolves.toBe(3);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }

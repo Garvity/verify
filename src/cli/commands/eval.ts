@@ -62,5 +62,5 @@ export async function evalCommand(args: string[]): Promise<number> {
   process.stdout.write("EVALUATION " + result.id + "\n\n");
   process.stdout.write(metricsAsMarkdownTable(result.metrics) + "\n\n");
   process.stdout.write("JSON: " + jsonPath + "\nMarkdown: " + markdownPath + "\n");
-  return result.metrics.every((metric) => metric.runs > 0) ? 0 : 3;
+  return result.metrics.every((metric) => metric.runs > 0 && metric.successfulReviews === metric.runs) ? 0 : 3;
 }
